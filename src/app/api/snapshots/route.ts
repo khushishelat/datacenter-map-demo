@@ -1,16 +1,25 @@
 import { NextResponse } from "next/server";
-import * as fs from "fs";
-import * as path from "path";
 
 export const dynamic = "force-dynamic";
 
 const API_KEY = process.env.PARALLEL_API_KEY || "";
 const BASE_URL = "https://api.parallel.ai";
 
-interface SnapshotMonitor {
-  monitorId: string;
-  runId: string;
-  facilityName: string;
+// Import snapshot monitor IDs
+let snapshotMonitors: Record<string, { monitorId: string; runId: string; facilityName: string }> | null = null;
+
+async function getSnapshotMonitors() {
+  if (snapshotMonitors) return snapshotMonitors;
+  try {
+    const fs = await import("fs");
+    const path = await import("path");
+    const filePath = path.join(process.cwd(), "src/data/snapshot-monitors.json");
+    if (fs.existsSync(filePath)) {
+      snapshotMonitors = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+      return snapshotMonitors!;
+    }
+  } catch {}
+  return {};
 }
 
 export interface SnapshotUpdate {
@@ -22,107 +31,83 @@ export interface SnapshotUpdate {
   changes: Record<string, { from: unknown; to: unknown }>;
 }
 
-async function fetchSnapshotEvents(monitorId: string): Promise<{
-  hasChanges: boolean;
-  timestamp: string;
-  changedFields: string[];
-  changes: Record<string, { from: unknown; to: unknown }>;
-}> {
-  if (!API_KEY) return { hasChanges: false, timestamp: "", changedFields: [], changes: {} };
+// Cache results for 30s to avoid hammering the API
+let cachedUpdates: SnapshotUpdate[] | null = null;
+let cacheTime = 0;
+const CACHE_TTL = 30_000;
 
+async function fetchSnapshotEvents(monitorId: string) {
   try {
     const res = await fetch(
       `${BASE_URL}/v1/monitors/${monitorId}/events`,
       { headers: { "x-api-key": API_KEY }, cache: "no-store" }
     );
-    if (!res.ok) return { hasChanges: false, timestamp: "", changedFields: [], changes: {} };
-
+    if (!res.ok) return null;
     const data = await res.json();
     const events = data.events || [];
+    if (events.length === 0) return null;
 
-    if (events.length === 0) {
-      return { hasChanges: false, timestamp: "", changedFields: [], changes: {} };
-    }
-
-    // Get the most recent snapshot event
     const latest = events[0];
     const changedContent = latest.changed_output?.content || {};
     const previousContent = latest.previous_output?.content || {};
     const changedFields = Object.keys(changedContent);
+    if (changedFields.length === 0) return null;
 
     const changes: Record<string, { from: unknown; to: unknown }> = {};
     for (const field of changedFields) {
-      changes[field] = {
-        from: previousContent[field],
-        to: changedContent[field],
-      };
+      changes[field] = { from: previousContent[field], to: changedContent[field] };
     }
 
-    return {
-      hasChanges: true,
-      timestamp: latest.event_date || "",
-      changedFields,
-      changes,
-    };
+    return { timestamp: latest.event_date || "", changedFields, changes };
   } catch {
-    return { hasChanges: false, timestamp: "", changedFields: [], changes: {} };
+    return null;
   }
 }
 
 export async function GET() {
+  if (!API_KEY) return NextResponse.json({ updates: [], total: 0 });
+
+  // Return cache if fresh
+  if (cachedUpdates && Date.now() - cacheTime < CACHE_TTL) {
+    return NextResponse.json({ updates: cachedUpdates, total: Object.keys(await getSnapshotMonitors()).length, cached: true });
+  }
+
   try {
-    // Load snapshot monitor IDs
-    let snapshots: Record<string, SnapshotMonitor> = {};
-    try {
-      const snapshotPath = path.join(process.cwd(), "src/data/snapshot-monitors.json");
-      if (fs.existsSync(snapshotPath)) {
-        snapshots = JSON.parse(fs.readFileSync(snapshotPath, "utf-8"));
-      }
-    } catch {
-      // Try static import as fallback for Vercel
-    }
+    const monitors = await getSnapshotMonitors();
+    const entries = Object.entries(monitors);
+    if (entries.length === 0) return NextResponse.json({ updates: [], total: 0 });
 
-    if (Object.keys(snapshots).length === 0) {
-      return NextResponse.json({ updates: [], total: 0 });
-    }
-
-    // Check a batch of snapshot monitors for changes (limit to avoid timeout)
-    // Only check monitors that are likely to have changes (random sample + recent)
-    const entries = Object.entries(snapshots);
-    const BATCH_SIZE = 50; // Check 50 at a time to stay within timeout
-
+    // Check in parallel batches of 30
+    const BATCH = 30;
     const updates: SnapshotUpdate[] = [];
 
-    // Check first batch
-    const batch = entries.slice(0, BATCH_SIZE);
-    const results = await Promise.all(
-      batch.map(async ([facilityIndex, snap]) => {
-        const result = await fetchSnapshotEvents(snap.monitorId);
-        if (result.hasChanges) {
+    for (let i = 0; i < entries.length && i < 300; i += BATCH) {
+      const batch = entries.slice(i, i + BATCH);
+      const results = await Promise.all(
+        batch.map(async ([idx, snap]) => {
+          const result = await fetchSnapshotEvents(snap.monitorId);
+          if (!result) return null;
           return {
-            facilityIndex,
+            facilityIndex: idx,
             facilityName: snap.facilityName,
             monitorId: snap.monitorId,
             timestamp: result.timestamp,
             changedFields: result.changedFields,
             changes: result.changes,
           };
-        }
-        return null;
-      })
-    );
-
-    for (const r of results) {
-      if (r) updates.push(r);
+        })
+      );
+      for (const r of results) {
+        if (r) updates.push(r);
+      }
     }
 
-    return NextResponse.json({
-      updates,
-      total: Object.keys(snapshots).length,
-      checked: batch.length,
-    });
+    cachedUpdates = updates;
+    cacheTime = Date.now();
+
+    return NextResponse.json({ updates, total: entries.length, checked: Math.min(entries.length, 300) });
   } catch (e) {
-    console.error("Failed to check snapshots:", e);
+    console.error("Snapshots error:", e);
     return NextResponse.json({ updates: [], total: 0 });
   }
 }

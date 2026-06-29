@@ -30,8 +30,34 @@ export function useMonitors() {
     }
   }, []);
 
+  // Fetch existing snapshot updates on mount
+  const fetchSnapshots = useCallback(async () => {
+    try {
+      const res = await fetch("/api/snapshots", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.updates?.length) {
+        setSnapshotUpdates((prev) => {
+          const next = { ...prev };
+          for (const u of data.updates) {
+            next[u.facilityIndex] = {
+              facilityIndex: u.facilityIndex,
+              facilityName: u.facilityName,
+              timestamp: u.timestamp,
+              changedFields: u.changedFields,
+            };
+          }
+          return next;
+        });
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     fetchMonitors();
+    fetchSnapshots();
 
     // SSE for real-time webhook events
     const es = new EventSource("/api/webhook");
