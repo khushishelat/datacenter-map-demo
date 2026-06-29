@@ -146,36 +146,28 @@ export function DatasetTable({ datacenters, monitors, snapshotUpdates = {} }: Da
                     </td>
                     {/* Monitors */}
                     <td className="px-4 py-2 whitespace-nowrap">
-                      {(monitor && events.length > 0) || snapshotUpdates[String(originalIndex)] ? (
-                        <button
-                          onClick={() => setSignalModal({
-                            monitor: monitor || null,
-                            facilityName: dc.name,
-                            facilityIndex: originalIndex,
-                            snapshot: snapshotUpdates[String(originalIndex)] || null,
-                          })}
-                          className="flex flex-col gap-0.5 hover:bg-[#FCDDCF]/20 px-2 py-0.5 rounded-[2px] transition-colors"
-                        >
-                          {monitor && events.length > 0 && (
-                            <span className="inline-flex items-center gap-1.5">
-                              <span className="w-1.5 h-1.5 rounded-full bg-[#FB631B] animate-pulse" />
-                              <span className="font-mono text-[8px] uppercase tracking-[0.05em] text-[#FB631B]">
-                                {events.length} region
-                              </span>
+                      {(() => {
+                        const regionCount = events.length;
+                        const hasSnapshot = !!snapshotUpdates[String(originalIndex)];
+                        const totalCount = regionCount + (hasSnapshot ? 1 : 0);
+                        if (totalCount === 0) return <span className="font-mono text-[8px] text-[#E5E5E5]">&mdash;</span>;
+                        return (
+                          <button
+                            onClick={() => setSignalModal({
+                              monitor: monitor || null,
+                              facilityName: dc.name,
+                              facilityIndex: originalIndex,
+                              snapshot: snapshotUpdates[String(originalIndex)] || null,
+                            })}
+                            className="inline-flex items-center gap-1.5 hover:bg-[#FCDDCF]/20 px-2 py-0.5 rounded-[2px] transition-colors"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#FB631B] animate-pulse" />
+                            <span className="font-mono text-[8px] uppercase tracking-[0.05em] text-[#FB631B]">
+                              {totalCount} Data updated
                             </span>
-                          )}
-                          {snapshotUpdates[String(originalIndex)] && (
-                            <span className="inline-flex items-center gap-1">
-                              <span className="w-1 h-1 rounded-full bg-[#FB631B]" />
-                              <span className="font-mono text-[8px] uppercase tracking-[0.05em] text-[#FB631B]">
-                                row updated
-                              </span>
-                            </span>
-                          )}
-                        </button>
-                      ) : (
-                        <span className="font-mono text-[8px] text-[#E5E5E5]">&mdash;</span>
-                      )}
+                          </button>
+                        );
+                      })()}
                     </td>
                     <EC className="max-w-[160px]"><Cell dc={dc} field="verified_operator" value={dc.operator} onClick={openBasis} facilityIndex={originalIndex} className="truncate block" /></EC>
                     <EC className="max-w-[160px]"><Cell dc={dc} field="verified_owner" value={dc.owner} onClick={openBasis} facilityIndex={originalIndex} className="truncate block" /></EC>
