@@ -3,10 +3,18 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { Monitor } from "@/lib/types";
 
+export interface SnapshotUpdate {
+  facilityIndex: string;
+  facilityName: string;
+  timestamp: string;
+  changedFields: string[];
+}
+
 export function useMonitors() {
   const [monitors, setMonitors] = useState<Monitor[]>([]);
   const [lastChecked, setLastChecked] = useState<Date>(new Date());
   const [loading, setLoading] = useState(true);
+  const [snapshotUpdates, setSnapshotUpdates] = useState<Record<string, SnapshotUpdate>>({});
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const fetchMonitors = useCallback(async () => {
@@ -23,23 +31,39 @@ export function useMonitors() {
   }, []);
 
   useEffect(() => {
-    // Initial fetch
     fetchMonitors();
 
-    // Connect to SSE for real-time webhook events
+    // SSE for real-time webhook events
     const es = new EventSource("/api/webhook");
     eventSourceRef.current = es;
 
-    es.onmessage = () => {
-      // A new event came in via webhook — refetch monitors to get fresh data
-      fetchMonitors();
+    es.onmessage = (msg) => {
+      try {
+        const event = JSON.parse(msg.data);
+
+        // Track snapshot updates
+        if (event.facilityIndex && event.changedFields?.length > 0) {
+          setSnapshotUpdates((prev) => ({
+            ...prev,
+            [event.facilityIndex]: {
+              facilityIndex: event.facilityIndex,
+              facilityName: event.facilityName || "",
+              timestamp: event.receivedAt || new Date().toISOString(),
+              changedFields: event.changedFields,
+            },
+          }));
+        }
+
+        // Refetch monitors for event_stream events
+        if (event.type === "monitor.event.detected" && !event.facilityIndex) {
+          fetchMonitors();
+        }
+      } catch {
+        // ignore parse errors
+      }
     };
 
-    es.onerror = () => {
-      // SSE reconnects automatically, but also poll as fallback
-    };
-
-    // Fallback poll every 60s in case SSE disconnects
+    // Fallback poll
     const fallback = setInterval(fetchMonitors, 60_000);
 
     return () => {
@@ -51,5 +75,13 @@ export function useMonitors() {
   const totalEvents = monitors.reduce((s, m) => s + m.events.length, 0);
   const totalFacilities = monitors.reduce((s, m) => s + m.facilityCount, 0);
 
-  return { monitors, lastChecked, totalEvents, totalFacilities, loading, refetch: fetchMonitors };
+  return {
+    monitors,
+    lastChecked,
+    totalEvents,
+    totalFacilities,
+    loading,
+    snapshotUpdates,
+    refetch: fetchMonitors,
+  };
 }

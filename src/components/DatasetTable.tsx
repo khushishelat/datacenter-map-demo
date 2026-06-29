@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback } from "react";
 import clsx from "clsx";
 import type { Datacenter, DisplayStatus, Monitor, MonitorDetection } from "@/lib/types";
+import type { SnapshotUpdate } from "@/hooks/useMonitors";
 import {
   STATUS_COLORS, STATUS_LABELS, STATE_TO_MONITOR, CA_SPLIT_LAT,
   MONITOR_CATEGORY_LABELS, MONITOR_CATEGORY_COLORS,
@@ -14,6 +15,7 @@ import { BasisPanel, type BasisPanelData } from "./BasisPanel";
 interface DatasetTableProps {
   datacenters: Datacenter[];
   monitors: Monitor[];
+  snapshotUpdates?: Record<string, SnapshotUpdate>;
 }
 
 const PAGE_SIZE = 50;
@@ -25,7 +27,7 @@ function getMonitorForDc(dc: Datacenter, monitors: Monitor[]): Monitor | null {
   return monitors.find((m) => m.id === monId) || null;
 }
 
-export function DatasetTable({ datacenters, monitors }: DatasetTableProps) {
+export function DatasetTable({ datacenters, monitors, snapshotUpdates = {} }: DatasetTableProps) {
   const [sortField, setSortField] = useState("signals");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(0);
@@ -139,12 +141,22 @@ export function DatasetTable({ datacenters, monitors }: DatasetTableProps) {
                     </td>
                     {/* Monitors */}
                     <td className="px-4 py-2 whitespace-nowrap">
-                      {monitor && events.length > 0 ? (
-                        <button onClick={() => setSignalModal({ monitor, facilityName: dc.name })} className="inline-flex items-center gap-1.5 hover:bg-[#FCDDCF]/30 px-2 py-0.5 rounded-[2px] transition-colors">
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#FB631B] animate-pulse" />
-                          <span className="font-mono text-[8px] uppercase tracking-[0.05em] text-[#FB631B]">{events.length}</span>
-                        </button>
-                      ) : <span className="font-mono text-[8px] text-[#E5E5E5]">&mdash;</span>}
+                      <div className="flex flex-col gap-0.5">
+                        {monitor && events.length > 0 ? (
+                          <button onClick={() => setSignalModal({ monitor, facilityName: dc.name })} className="inline-flex items-center gap-1.5 hover:bg-[#FCDDCF]/30 px-2 py-0.5 rounded-[2px] transition-colors">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#FB631B] animate-pulse" />
+                            <span className="font-mono text-[8px] uppercase tracking-[0.05em] text-[#FB631B]">{events.length}</span>
+                          </button>
+                        ) : <span className="font-mono text-[8px] text-[#E5E5E5]">&mdash;</span>}
+                        {snapshotUpdates[String(originalIndex)] && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#69BE78]/10 rounded-[2px]">
+                            <span className="w-1 h-1 rounded-full bg-[#69BE78]" />
+                            <span className="font-mono text-[8px] uppercase tracking-[0.05em] text-[#69BE78]">
+                              updated {new Date(snapshotUpdates[String(originalIndex)].timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <EC className="max-w-[160px]"><Cell dc={dc} field="verified_operator" value={dc.operator} onClick={openBasis} facilityIndex={originalIndex} className="truncate block" /></EC>
                     <EC className="max-w-[160px]"><Cell dc={dc} field="verified_owner" value={dc.owner} onClick={openBasis} facilityIndex={originalIndex} className="truncate block" /></EC>

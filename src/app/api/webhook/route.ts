@@ -1,16 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 
-/**
- * Webhook endpoint for Parallel Monitor API events.
- *
- * When a monitor detects a new event, Parallel POSTs here.
- * We store the event in memory (for demo) so the frontend
- * can pick it up without polling the Parallel API.
- *
- * For production: use a database or Redis.
- * For this demo: in-memory store + Server-Sent Events to push to clients.
- */
-
 export interface WebhookEvent {
   monitorId: string;
   eventId: string;
@@ -18,33 +7,59 @@ export interface WebhookEvent {
   type: string;
   content: unknown;
   receivedAt: string;
+  // Snapshot-specific
+  facilityIndex?: string;
+  facilityName?: string;
+  changedFields?: string[];
 }
 
-// In-memory event store (resets on deploy/restart — fine for demo)
+// In-memory stores
 const recentEvents: WebhookEvent[] = [];
 const MAX_EVENTS = 500;
 
-// SSE clients waiting for updates
+// Track snapshot updates by facility index
+const snapshotUpdates: Record<string, { timestamp: string; changedFields: string[] }> = {};
+
 const clients = new Set<ReadableStreamDefaultController>();
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    const metadata = body.data?.metadata || {};
+    const isSnapshot = metadata.type === "datacenter-snapshot";
+
+    // Extract changed fields from snapshot event
+    const changedOutput = body.data?.event?.changed_output;
+    const changedFields = changedOutput?.content
+      ? Object.keys(changedOutput.content)
+      : [];
 
     const event: WebhookEvent = {
       monitorId: body.data?.monitor_id || "",
-      eventId: body.data?.event?.event_id || "",
+      eventId: body.data?.event?.event_id || body.data?.event?.event_group_id || "",
       eventDate: body.data?.event?.event_date || new Date().toISOString(),
       type: body.type || "unknown",
-      content: body.data?.event?.output?.content || body.data,
+      content: isSnapshot
+        ? { changed: changedOutput?.content, previous: body.data?.event?.previous_output?.content }
+        : body.data?.event?.output?.content || body.data,
       receivedAt: new Date().toISOString(),
+      facilityIndex: metadata.facility_index,
+      facilityName: metadata.facility_name,
+      changedFields,
     };
 
-    // Store
     recentEvents.unshift(event);
     if (recentEvents.length > MAX_EVENTS) recentEvents.pop();
 
-    // Notify all SSE clients
+    // Track snapshot updates per facility
+    if (isSnapshot && metadata.facility_index) {
+      snapshotUpdates[metadata.facility_index] = {
+        timestamp: new Date().toISOString(),
+        changedFields,
+      };
+    }
+
+    // Push to SSE clients
     const message = `data: ${JSON.stringify(event)}\n\n`;
     for (const controller of clients) {
       try {
@@ -55,7 +70,9 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(
-      `[webhook] ${event.type} from ${event.monitorId}: ${typeof event.content === "object" ? JSON.stringify(event.content).slice(0, 100) : event.content}`
+      `[webhook] ${body.type} ${isSnapshot ? "SNAPSHOT" : "EVENT"} from ${event.monitorId}${
+        isSnapshot ? ` facility=${metadata.facility_name} changed=[${changedFields.join(",")}]` : ""
+      }`
     );
 
     return NextResponse.json({ received: true });
@@ -65,20 +82,18 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// SSE endpoint — clients connect here to get real-time pushes
+// SSE endpoint
 export async function GET() {
   const stream = new ReadableStream({
     start(controller) {
       clients.add(controller);
 
-      // Send recent events as initial data
       for (const event of recentEvents.slice(0, 10)) {
         controller.enqueue(
           new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
         );
       }
 
-      // Heartbeat every 30s to keep connection alive
       const heartbeat = setInterval(() => {
         try {
           controller.enqueue(new TextEncoder().encode(`: heartbeat\n\n`));
@@ -88,9 +103,7 @@ export async function GET() {
         }
       }, 30000);
     },
-    cancel() {
-      // Client disconnected
-    },
+    cancel() {},
   });
 
   return new Response(stream, {
@@ -102,7 +115,7 @@ export async function GET() {
   });
 }
 
-// Export for the monitors route to read
-export function getRecentWebhookEvents(): WebhookEvent[] {
-  return recentEvents;
+// Expose snapshot updates for the monitors API
+export function getSnapshotUpdates(): Record<string, { timestamp: string; changedFields: string[] }> {
+  return snapshotUpdates;
 }

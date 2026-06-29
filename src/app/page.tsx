@@ -29,7 +29,7 @@ export default function Home() {
   const [selectedMonitor, setSelectedMonitor] = useState<Monitor | null>(null);
 
   const { filtered, counts } = useDatacenters(activeFilter, searchQuery);
-  const { monitors, totalEvents, lastChecked } = useMonitors();
+  const { monitors, totalEvents, lastChecked, snapshotUpdates } = useMonitors();
 
   const lastCheckedStr = lastChecked.toLocaleTimeString("en-US", {
     hour: "numeric",
@@ -85,7 +85,7 @@ export default function Home() {
           </>
         ) : (
           <div className="flex-1 overflow-hidden">
-            <DatasetTable datacenters={filtered} monitors={monitors} />
+            <DatasetTable datacenters={filtered} monitors={monitors} snapshotUpdates={snapshotUpdates} />
           </div>
         )}
       </div>

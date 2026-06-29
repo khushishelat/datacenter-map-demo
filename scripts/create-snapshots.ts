@@ -1,6 +1,7 @@
 /**
- * Creates snapshot monitors for completed enrichment runs.
- * Each snapshot watches one facility's enrichment for changes.
+ * Creates snapshot monitors for all enrichment runs.
+ * Each monitor watches one facility's enrichment for changes hourly.
+ * Uses v2 run IDs (most complete enrichment).
  *
  * Usage: npx tsx scripts/create-snapshots.ts
  */
@@ -11,15 +12,18 @@ const API_KEY =
   process.env.PARALLEL_API_KEY || "feQGW1NtoZC9N6XxL1j9UNIWdVeoP6I8IP4yHeeK";
 const BASE_URL = "https://api.parallel.ai";
 
-interface EnrichmentRun {
+// Deployed webhook URL — update after deployment
+const WEBHOOK_URL = process.env.WEBHOOK_URL || "https://datacenter-map-demo.vercel.app/api/webhook";
+
+interface RunEntry {
   runId: string;
   groupId: string;
   facilityIndex: number;
   facilityName: string;
 }
 
-interface EnrichmentData {
-  runs: EnrichmentRun[];
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 async function createSnapshotMonitor(
@@ -35,22 +39,24 @@ async function createSnapshotMonitor(
     },
     body: JSON.stringify({
       type: "snapshot",
-      frequency: "1d",
+      frequency: "1h",
       processor: "lite",
       settings: { task_run_id: taskRunId },
+      webhook: {
+        url: WEBHOOK_URL,
+        event_types: ["monitor.event.detected"],
+      },
       metadata: {
         facility_name: facilityName.slice(0, 100),
         facility_index: String(facilityIndex),
-        type: "datacenter-enrichment-snapshot",
+        type: "datacenter-snapshot",
       },
     }),
   });
 
   if (!res.ok) {
     const err = await res.text();
-    console.error(
-      `  ✗ ${facilityName}: ${res.status} ${err.slice(0, 200)}`
-    );
+    console.error(`  ✗ [${facilityIndex}] ${facilityName}: ${res.status} ${err.slice(0, 150)}`);
     return null;
   }
 
@@ -58,54 +64,34 @@ async function createSnapshotMonitor(
   return data.monitor_id;
 }
 
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
 async function main() {
-  const runsPath = "./src/data/enrichment-runs.json";
+  // Use v2 run IDs (most complete enrichment)
+  const runsPath = "./src/data/enrichment-v2-runs.json";
   if (!fs.existsSync(runsPath)) {
-    console.error("No enrichment-runs.json. Run run-enrichment.ts first.");
+    console.error("No enrichment-v2-runs.json found.");
     process.exit(1);
   }
 
-  const data: EnrichmentData = JSON.parse(fs.readFileSync(runsPath, "utf-8"));
+  const runData = JSON.parse(fs.readFileSync(runsPath, "utf-8"));
+  const runs: RunEntry[] = runData.runs;
 
-  // Only create snapshots for runs that have completed (check enrichments.json)
-  const enrichPath = "./public/data/enrichments.json";
-  if (!fs.existsSync(enrichPath)) {
-    console.error(
-      "No enrichments.json. Run collect-enrichments.ts first."
-    );
-    process.exit(1);
-  }
+  console.log(`Creating snapshot monitors for ${runs.length} facilities...`);
+  console.log(`Webhook: ${WEBHOOK_URL}`);
+  console.log(`Rate limit: ~300/min, pacing at ~200/min\n`);
 
-  const enrichments = JSON.parse(fs.readFileSync(enrichPath, "utf-8"));
-  const completedIndices = new Set(Object.keys(enrichments));
-
-  const toCreate = data.runs.filter((r) =>
-    completedIndices.has(String(r.facilityIndex))
-  );
-
-  console.log(
-    `Creating snapshot monitors for ${toCreate.length} enriched facilities...\n`
-  );
-
-  // Load existing snapshots
+  // Load existing snapshots to resume
   const snapshotPath = "./src/data/snapshot-monitors.json";
-  let snapshots: Record<
-    string,
-    { monitorId: string; runId: string; facilityName: string }
-  > = {};
+  let snapshots: Record<string, { monitorId: string; runId: string; facilityName: string }> = {};
   if (fs.existsSync(snapshotPath)) {
     snapshots = JSON.parse(fs.readFileSync(snapshotPath, "utf-8"));
   }
 
   let created = 0;
   let skipped = 0;
+  let failed = 0;
 
-  for (let i = 0; i < toCreate.length; i++) {
-    const run = toCreate[i];
+  for (let i = 0; i < runs.length; i++) {
+    const run = runs[i];
     const key = String(run.facilityIndex);
 
     // Skip if already has a snapshot
@@ -127,27 +113,31 @@ async function main() {
         facilityName: run.facilityName,
       };
       created++;
+    } else {
+      failed++;
     }
 
     // Save every 50
-    if (created % 50 === 0 && created > 0) {
+    if ((created + failed) % 50 === 0 && (created + failed) > 0) {
       fs.writeFileSync(snapshotPath, JSON.stringify(snapshots, null, 2));
       process.stdout.write(
-        `\r  Created: ${created}, Skipped: ${skipped}, Total: ${Object.keys(snapshots).length}`
+        `\r  Progress: ${i + 1}/${runs.length} | Created: ${created} | Skipped: ${skipped} | Failed: ${failed}`
       );
     }
 
-    // Small delay
-    await sleep(50);
+    // Rate limit: ~200/min = 1 every 300ms
+    await sleep(300);
   }
 
+  // Final save
   fs.writeFileSync(snapshotPath, JSON.stringify(snapshots, null, 2));
-  console.log(
-    `\n\nDone. ${created} snapshot monitors created, ${skipped} skipped.`
-  );
-  console.log(
-    `Total: ${Object.keys(snapshots).length} snapshots saved to ${snapshotPath}`
-  );
+
+  console.log(`\n\n=== DONE ===`);
+  console.log(`Created: ${created}`);
+  console.log(`Skipped: ${skipped}`);
+  console.log(`Failed: ${failed}`);
+  console.log(`Total snapshots: ${Object.keys(snapshots).length}`);
+  console.log(`Saved to ${snapshotPath}`);
 }
 
 main().catch(console.error);
