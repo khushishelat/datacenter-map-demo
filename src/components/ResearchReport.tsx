@@ -32,11 +32,6 @@ export function ResearchReport({ event, monitor, onClose }: ResearchReportProps)
     if (streamRef.current) streamRef.current.scrollTop = streamRef.current.scrollHeight;
   }, [messages, content]);
 
-  // Cleanup polling on unmount
-  useEffect(() => {
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, []);
-
   const startPolling = useCallback((eid: string) => {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
@@ -57,6 +52,27 @@ export function ResearchReport({ event, monitor, onClose }: ResearchReportProps)
     // Timeout after 5 min
     setTimeout(() => { if (pollRef.current) clearInterval(pollRef.current); }, 300000);
   }, []);
+
+  // On mount: check if report already exists or is in progress
+  useEffect(() => {
+    async function checkExisting() {
+      try {
+        const res = await fetch(`/api/research?eventId=${encodeURIComponent(event.eventId)}`);
+        const data = await res.json();
+        if (data.content) {
+          setContent(data.content);
+          setRunId(data.runId || "");
+          setStatus("completed");
+        } else if (data.status === "running" && data.runId) {
+          setRunId(data.runId);
+          setStatus("running");
+          startPolling(event.eventId);
+        }
+      } catch {}
+    }
+    checkExisting();
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [event.eventId, startPolling]);
 
   async function generateReport() {
     setStatus("running");
