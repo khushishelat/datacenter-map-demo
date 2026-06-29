@@ -1,18 +1,34 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState(false);
-  const router = useRouter();
+  const [loading, setLoading] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(false);
-    // Navigate with password param — middleware will validate and set cookie
-    window.location.href = `/?password=${encodeURIComponent(password)}`;
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+
+      if (res.ok) {
+        window.location.href = "/";
+      } else {
+        setError(true);
+        setLoading(false);
+      }
+    } catch {
+      setError(true);
+      setLoading(false);
+    }
   }
 
   return (
@@ -41,9 +57,10 @@ export default function LoginPage() {
           )}
           <button
             type="submit"
-            className="w-full font-mono uppercase text-[13px] px-4 py-2.5 bg-[#1D1B16] text-white rounded-[4px] hover:bg-[#434343] transition-colors"
+            disabled={loading}
+            className="w-full font-mono uppercase text-[13px] px-4 py-2.5 bg-[#1D1B16] text-white rounded-[4px] hover:bg-[#434343] transition-colors disabled:opacity-50"
           >
-            Enter
+            {loading ? "..." : "Enter"}
           </button>
         </form>
 
