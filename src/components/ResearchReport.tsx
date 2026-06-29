@@ -276,10 +276,10 @@ function ReportContent({ content }: { content: string }) {
   });
 
   return (
-    <div className="flex h-full">
-      {/* TOC sidebar */}
+    <div className="flex h-full overflow-hidden">
+      {/* TOC sidebar — sticky */}
       {headings.length > 2 && (
-        <div className="w-[200px] shrink-0 border-r border-[#E5E5E5] overflow-y-auto py-4 px-4">
+        <div className="w-[200px] shrink-0 border-r border-[#E5E5E5] overflow-y-auto py-4 px-4 sticky top-0 self-start h-full">
           <div className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#ADADAC] mb-3">
             Contents
           </div>
