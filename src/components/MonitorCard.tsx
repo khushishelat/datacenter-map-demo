@@ -206,7 +206,7 @@ function DetectionCard({ detection, monitor }: { detection: MonitorDetection; mo
               : "text-[#ADADAC] border-[#E5E5E5] hover:border-[#D6D6D6]"
           }`}
         >
-          {"{ }"} payload
+          {"{ }"} view code
         </button>
       </div>
 

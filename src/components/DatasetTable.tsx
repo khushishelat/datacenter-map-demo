@@ -98,7 +98,7 @@ export function DatasetTable({ datacenters, monitors }: DatasetTableProps) {
 
         {/* Scrollable table */}
         <div className="flex-1 overflow-auto">
-          <table className="text-[13px] leading-[16px]">
+          <table className="text-[13px] leading-[16px] w-max">
             <thead className="sticky top-0 bg-[#F6F6F6] z-10">
               <tr>
                 <TH f="name" l="Facility" s={sortField} d={sortDir} o={handleSort} sticky />
@@ -145,8 +145,8 @@ export function DatasetTable({ datacenters, monitors }: DatasetTableProps) {
                         </button>
                       ) : <span className="font-mono text-[8px] text-[#E5E5E5]">&mdash;</span>}
                     </td>
-                    <EC><Cell dc={dc} field="verified_operator" value={dc.operator} onClick={openBasis} /></EC>
-                    <EC className="max-w-[180px]"><Cell dc={dc} field="verified_owner" value={dc.owner} onClick={openBasis} className="truncate block" /></EC>
+                    <EC className="max-w-[160px]"><Cell dc={dc} field="verified_operator" value={dc.operator} onClick={openBasis} className="truncate block" /></EC>
+                    <EC className="max-w-[160px]"><Cell dc={dc} field="verified_owner" value={dc.owner} onClick={openBasis} className="truncate block" /></EC>
                     <td className="px-4 py-2 text-[#5C5B59] whitespace-nowrap">{dc.state}</td>
                     <EC>
                       <Cell dc={dc} field="verified_status" value={STATUS_LABELS[display]} onClick={openBasis} displayValue={<StatusBadge status={display} />} />

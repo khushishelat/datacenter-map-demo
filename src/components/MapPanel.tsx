@@ -51,35 +51,35 @@ function getMarkerStyle(
       fillOpacity: 1,
       color: STATUS_COLORS.operational,
       weight: 1.5,
-      radius: 4,
+      radius: 3,
     },
     construction: {
       fillColor: STATUS_COLORS.construction,
       fillOpacity: 0.85,
       color: STATUS_COLORS.construction,
       weight: 1.5,
-      radius: 4,
+      radius: 3,
     },
     planned: {
       fillColor: "transparent",
       fillOpacity: 0,
       color: STATUS_COLORS.planned,
       weight: 1.5,
-      radius: 4,
+      radius: 3,
     },
     unknown: {
       fillColor: "transparent",
       fillOpacity: 0,
       color: STATUS_COLORS.unknown,
       weight: 1.5,
-      radius: 4,
+      radius: 3,
     },
     decommissioned: {
       fillColor: STATUS_COLORS.decommissioned,
       fillOpacity: 0.5,
       color: STATUS_COLORS.decommissioned,
       weight: 2,
-      radius: 4,
+      radius: 3,
       dashArray: "2 3",
     },
   }[status];
@@ -91,7 +91,7 @@ function getMarkerStyle(
       fillOpacity: 1,
       color: "#FB631B",
       weight: 2,
-      radius: 5,
+      radius: 4,
     };
   }
 
@@ -100,7 +100,7 @@ function getMarkerStyle(
       ...base,
       fillOpacity: base.fillOpacity * 0.15,
       opacity: 0.15,
-      radius: 3,
+      radius: 2,
     };
   }
 
@@ -143,7 +143,7 @@ function FlyToSelection({
 
     // Compute bounds
     const bounds = L.latLngBounds(matching.map((dc) => [dc.lat, dc.lng]));
-    map.flyToBounds(bounds.pad(0.3), { duration: 0.8, maxZoom: 10 });
+    map.flyToBounds(bounds.pad(0.4), { duration: 0.8, maxZoom: 8 });
   }, [selectedMonitor, datacenters, map]);
 
   return null;
@@ -185,6 +185,7 @@ export default function MapPanel({
         className="w-full h-full"
         zoomControl={true}
         attributionControl={true}
+        preferCanvas={true}
       >
         <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} />
         <FlyToSelection

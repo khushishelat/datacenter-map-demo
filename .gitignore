@@ -44,4 +44,5 @@ next-env.d.ts
 public/data/enrichments.json
 src/data/backfill-results.json
 src/data/enrichment-runs.json
+src/data/enrichment-v2-runs.json
 src/data/snapshot-monitors.json

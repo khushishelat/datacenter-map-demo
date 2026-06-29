@@ -5,7 +5,6 @@ import dynamic from "next/dynamic";
 import type { DisplayStatus, Monitor } from "@/lib/types";
 import { useDatacenters } from "@/hooks/useDatacenters";
 import { useMonitors } from "@/hooks/useMonitors";
-import { useLiveTimer } from "@/hooks/useLiveTimer";
 import { Header } from "@/components/Header";
 import { Toolbar } from "@/components/Toolbar";
 import { MonitorPanel } from "@/components/MonitorPanel";
@@ -30,13 +29,14 @@ export default function Home() {
   const [selectedMonitor, setSelectedMonitor] = useState<Monitor | null>(null);
 
   const { filtered, counts } = useDatacenters(activeFilter, searchQuery);
-  const { monitors, totalEvents, refetch } = useMonitors();
+  const { monitors, totalEvents, lastChecked } = useMonitors();
 
-  const handleTick = useCallback(() => {
-    refetch();
-  }, [refetch]);
-
-  const { timeStr, countdown } = useLiveTimer(handleTick);
+  const lastCheckedStr = lastChecked.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
 
   const handleMonitorSelect = useCallback(
     (monitor: Monitor | null) => {
@@ -52,8 +52,7 @@ export default function Home() {
       <Header
         monitorCount={monitors.length}
         detectedCount={totalEvents}
-        lastChecked={timeStr}
-        countdown={countdown}
+        lastChecked={lastCheckedStr}
       />
       <Toolbar
         activeTab={activeTab}

@@ -125,18 +125,41 @@ export function BasisPanel({ data, onClose }: BasisPanelProps) {
           <div className="mt-2">
             <CopyCodeBlock
               label="POST /v1/tasks/runs"
-              code={`curl -X POST https://api.parallel.ai/v1/tasks/runs \\
-  -H "x-api-key: $PARALLEL_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '${JSON.stringify(
-    {
-      input: `Research facility: ${data.facilityName}`,
-      task_spec: { output_schema: { type: "json", json_schema: "..." } },
-      processor: "ultra2x",
-    },
-    null,
-    2
-  )}'`}
+              code={JSON.stringify({
+                input: `Research facility: ${data.facilityName}`,
+                task_spec: {
+                  output_schema: {
+                    type: "json",
+                    json_schema: {
+                      type: "object",
+                      properties: {
+                        description: { type: "string" },
+                        verified_status: { type: "string", enum: ["operational", "under-construction", "planned", "decommissioned"] },
+                        power_capacity_mw: { type: "number" },
+                        total_sqft: { type: "number" },
+                        year_online: { type: "string" },
+                        construction_update: { type: "string" },
+                        recent_news: { type: "string" },
+                        notable_tenants: { type: "string" },
+                        verified_name: { type: "string" },
+                        verified_operator: { type: "string" },
+                        verified_owner: { type: "string" },
+                        cooling_type: { type: "string" },
+                        tier_level: { type: "string" },
+                        fiber_providers: { type: "string" },
+                        num_buildings: { type: "number" },
+                        campus_acres: { type: "number" },
+                        utility_provider: { type: "string" },
+                        tax_incentives: { type: "string" },
+                        natural_hazard_zone: { type: "string" },
+                      },
+                      required: ["description", "verified_status", "verified_name", "verified_operator"],
+                      additionalProperties: false,
+                    },
+                  },
+                },
+                processor: "ultra2x",
+              }, null, 2)}
             />
           </div>
         )}

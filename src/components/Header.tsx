@@ -4,14 +4,12 @@ interface HeaderProps {
   monitorCount: number;
   detectedCount: number;
   lastChecked: string;
-  countdown: number;
 }
 
 export function Header({
   monitorCount,
   detectedCount,
   lastChecked,
-  countdown,
 }: HeaderProps) {
   return (
     <header className="flex items-center justify-between px-6 py-2.5 border-b border-[#E5E5E5] bg-white shrink-0">
@@ -31,9 +29,7 @@ export function Header({
             <span>no events yet</span>
           )}
           <span>&middot;</span>
-          <span>last checked {lastChecked}</span>
-          <span>&middot;</span>
-          <span>next {countdown}s</span>
+          <span>updated {lastChecked}</span>
         </div>
       </div>
 
