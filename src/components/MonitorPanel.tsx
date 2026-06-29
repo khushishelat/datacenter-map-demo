@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import clsx from "clsx";
 import { ExternalLink, FileText } from "lucide-react";
 import type { Monitor, MonitorDetection } from "@/lib/types";
@@ -27,47 +27,26 @@ export function MonitorPanel({
 }: MonitorPanelProps) {
   const [classFilter, setClassFilter] = useState<ClassFilter>("all");
   const [reportTarget, setReportTarget] = useState<{ event: MonitorDetection; monitor: Monitor } | null>(null);
-  // Track report state per eventId — persisted in localStorage
+  // Track report state per eventId — persisted server-side in Vercel Blob
   const [reportStates, setReportStates] = useState<Record<string, { status: "running" | "completed"; content?: string; runId?: string }>>({});
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("dc-report-states");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setReportStates(parsed);
-        // For any "running" reports, poll to check if they completed
-        for (const [eventId, state] of Object.entries(parsed) as [string, { status: string; runId?: string }][]) {
-          if (state.status === "running" && state.runId) {
-            fetch(`/api/research?eventId=${encodeURIComponent(eventId)}&runId=${encodeURIComponent(state.runId)}`)
-              .then((r) => r.json())
-              .then((data) => {
-                if (data.content) {
-                  setReportStates((prev) => {
-                    const next = { ...prev, [eventId]: { status: "completed" as const, content: data.content, runId: data.runId } };
-                    localStorage.setItem("dc-report-states", JSON.stringify(next));
-                    return next;
-                  });
-                }
-              })
-              .catch(() => {});
-          }
-        }
-      }
-    } catch {}
-  }, []);
-
   function handleOpenReport(event: MonitorDetection, monitor: Monitor) {
-    setReportTarget({ event, monitor });
+    // Check if report already exists before opening
+    fetch(`/api/research?eventId=${encodeURIComponent(event.eventId)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.content) {
+          setReportStates((prev) => ({ ...prev, [event.eventId]: { status: "completed", content: data.content, runId: data.runId } }));
+        } else if (data.runId) {
+          setReportStates((prev) => ({ ...prev, [event.eventId]: { status: "running", runId: data.runId } }));
+        }
+        setReportTarget({ event, monitor });
+      })
+      .catch(() => setReportTarget({ event, monitor }));
   }
 
   function handleReportStatusChange(eventId: string, status: "running" | "completed", content?: string, runId?: string) {
-    setReportStates((prev) => {
-      const next = { ...prev, [eventId]: { status, content, runId } };
-      try { localStorage.setItem("dc-report-states", JSON.stringify(next)); } catch {}
-      return next;
-    });
+    setReportStates((prev) => ({ ...prev, [eventId]: { status, content, runId } }));
   }
 
   const filtered =
