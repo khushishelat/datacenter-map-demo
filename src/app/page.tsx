@@ -85,7 +85,7 @@ export default function Home() {
             </div>
           </>
         ) : (
-          <div className="flex-1">
+          <div className="flex-1 overflow-hidden">
             <DatasetTable datacenters={filtered} monitors={monitors} />
           </div>
         )}

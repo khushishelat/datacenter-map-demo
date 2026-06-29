@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 import type { Monitor, MonitorDetection } from "@/lib/types";
+import { CopyCodeBlock } from "./CopyCodeBlock";
 import {
   MONITOR_CATEGORY_LABELS,
   MONITOR_CATEGORY_COLORS,
@@ -116,7 +117,7 @@ export function MonitorCard({ monitor, isSelected, onSelect }: MonitorCardProps)
           {hasEvents ? (
             <div className="ml-5 space-y-2">
               {monitor.events.map((evt) => (
-                <DetectionCard key={evt.eventId} detection={evt} />
+                <DetectionCard key={evt.eventId} detection={evt} monitor={monitor} />
               ))}
             </div>
           ) : (
@@ -131,7 +132,7 @@ export function MonitorCard({ monitor, isSelected, onSelect }: MonitorCardProps)
   );
 }
 
-function DetectionCard({ detection }: { detection: MonitorDetection }) {
+function DetectionCard({ detection, monitor }: { detection: MonitorDetection; monitor: Monitor }) {
   const [showPayload, setShowPayload] = useState(false);
   const catLabel =
     MONITOR_CATEGORY_LABELS[detection.category] || detection.category;
@@ -209,12 +210,24 @@ function DetectionCard({ detection }: { detection: MonitorDetection }) {
         </button>
       </div>
 
-      {/* Raw payload */}
+      {/* API request */}
       {showPayload && (
-        <div className="mt-2 bg-[#1D1B16] rounded-[4px] p-3 overflow-x-auto">
-          <pre className="font-mono text-[11px] leading-[16px] text-[#D8D0BF] whitespace-pre-wrap break-words">
-            {JSON.stringify(detection.rawPayload, null, 2)}
-          </pre>
+        <div className="mt-2">
+          <CopyCodeBlock
+            label="POST /v1/monitors"
+            code={`curl -X POST https://api.parallel.ai/v1/monitors \\
+  -H "x-api-key: $PARALLEL_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '${JSON.stringify({
+    type: "event_stream",
+    frequency: monitor.frequency,
+    settings: {
+      query: monitor.query,
+      processor: "base",
+      output_schema: { type: "json", json_schema: "..." },
+    },
+  }, null, 2)}'`}
+          />
         </div>
       )}
     </div>

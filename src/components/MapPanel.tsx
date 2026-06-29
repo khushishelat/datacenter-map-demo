@@ -6,6 +6,7 @@ import {
   TileLayer,
   CircleMarker,
   Popup,
+  Tooltip,
   useMap,
 } from "react-leaflet";
 import L from "leaflet";
@@ -75,10 +76,11 @@ function getMarkerStyle(
     },
     decommissioned: {
       fillColor: STATUS_COLORS.decommissioned,
-      fillOpacity: 0.4,
+      fillOpacity: 0.5,
       color: STATUS_COLORS.decommissioned,
-      weight: 1,
-      radius: 3,
+      weight: 2,
+      radius: 4,
+      dashArray: "2 3",
     },
   }[status];
 
@@ -202,6 +204,16 @@ export default function MapPanel({
               pathOptions={style}
               radius={style.radius}
             >
+              <Tooltip
+                direction="top"
+                offset={[0, -8]}
+                className="facility-tooltip"
+              >
+                <div className="font-sans text-[12px]">
+                  <div className="font-medium text-[#1D1B16]">{dc.name}</div>
+                  <div className="text-[#858483]">{dc.operator} &middot; {dc.city}, {dc.state}</div>
+                </div>
+              </Tooltip>
               <Popup>
                 <FacilityPopup dc={dc} display={display} />
               </Popup>

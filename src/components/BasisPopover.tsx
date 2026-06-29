@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { ExternalLink, X } from "lucide-react";
+import { ExternalLink, X, Code } from "lucide-react";
+import { CopyCodeBlock } from "./CopyCodeBlock";
 
 interface BasisPopoverProps {
   field: string;
@@ -148,13 +149,49 @@ export function BasisPopover({
               )}
             </div>
 
-            {/* Footer */}
-            <div className="px-6 py-3 border-t border-[#E5E5E5] shrink-0">
-              <span className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#FB631B] bg-[#FCDDCF] px-1.5 py-0.5 rounded-[2px]">
-                Enriched by Task API
-              </span>
-            </div>
+            {/* Footer with collapsible code */}
+            <BasisFooter facilityName={facilityName} />
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BasisFooter({ facilityName }: { facilityName: string }) {
+  const [showCode, setShowCode] = useState(false);
+
+  return (
+    <div className="px-6 py-3 border-t border-[#E5E5E5] shrink-0">
+      <div className="flex items-center gap-2">
+        <span className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#FB631B] bg-[#FCDDCF] px-1.5 py-0.5 rounded-[2px]">
+          Enriched by Task API
+        </span>
+        <button
+          onClick={() => setShowCode(!showCode)}
+          className="flex items-center gap-1 font-mono uppercase text-[8px] tracking-[0.05em] text-[#ADADAC] hover:text-[#1D1B16] transition-colors"
+        >
+          <Code className="w-2.5 h-2.5" />
+          {showCode ? "Hide code" : "View code"}
+        </button>
+      </div>
+      {showCode && (
+        <div className="mt-2">
+          <CopyCodeBlock
+            label="POST /v1/tasks/runs"
+            code={`curl -X POST https://api.parallel.ai/v1/tasks/runs \\
+  -H "x-api-key: $PARALLEL_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '${JSON.stringify(
+    {
+      input: `Research facility: ${facilityName}`,
+      task_spec: { output_schema: { type: "json", json_schema: "..." } },
+      processor: "ultra2x",
+    },
+    null,
+    2
+  )}'`}
+          />
         </div>
       )}
     </div>

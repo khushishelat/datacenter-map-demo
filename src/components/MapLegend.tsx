@@ -16,7 +16,7 @@ const STATUSES: DisplayStatus[] = [
 
 export function MapLegend({ counts }: MapLegendProps) {
   return (
-    <div className="absolute top-4 right-4 z-[1000] bg-white border border-[#E5E5E5] rounded-[4px] shadow-sm px-6 py-4 min-w-[200px]">
+    <div className="absolute top-4 right-4 z-[400] bg-white border border-[#E5E5E5] rounded-[4px] shadow-sm px-6 py-4 min-w-[200px] pointer-events-auto">
       <h3 className="text-[13px] font-medium text-[#1D1B16] mb-3 tracking-[0.02em]">
         Datacenter lifecycle
       </h3>
@@ -37,7 +37,7 @@ export function MapLegend({ counts }: MapLegendProps) {
       </div>
       <p className="mt-4 pt-3 border-t border-[#E5E5E5] text-[8px] text-[#ADADAC] leading-[12px] max-w-[200px]">
         {counts.all.toLocaleString()} U.S. datacenter facilities.
-        Source: public records.
+        Source: Task API. Continuously monitoring for site updates.
       </p>
     </div>
   );

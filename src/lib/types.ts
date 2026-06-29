@@ -18,6 +18,7 @@ export interface Datacenter {
 }
 
 export interface DatacenterEnrichment {
+  // v1
   description: string;
   verified_status: string;
   power_capacity_mw: number;
@@ -26,6 +27,19 @@ export interface DatacenterEnrichment {
   construction_update: string;
   recent_news: string;
   notable_tenants: string;
+  // v2
+  verified_name: string;
+  verified_operator: string;
+  verified_owner: string;
+  cooling_type: string;
+  tier_level: string;
+  fiber_providers: string;
+  num_buildings: number;
+  campus_acres: number;
+  utility_provider: string;
+  tax_incentives: string;
+  natural_hazard_zone: string;
+  // metadata
   citations?: { field: string; url: string; title: string }[];
   reasoning?: Record<string, string>;
   enrichedAt?: string;

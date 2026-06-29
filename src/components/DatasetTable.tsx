@@ -1,27 +1,20 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import clsx from "clsx";
-import type { Datacenter, DisplayStatus, Monitor } from "@/lib/types";
-import { STATUS_COLORS, STATUS_LABELS, STATE_TO_MONITOR, CA_SPLIT_LAT } from "@/lib/constants";
+import type { Datacenter, DisplayStatus, Monitor, MonitorDetection } from "@/lib/types";
+import {
+  STATUS_COLORS, STATUS_LABELS, STATE_TO_MONITOR, CA_SPLIT_LAT,
+  MONITOR_CATEGORY_LABELS, MONITOR_CATEGORY_COLORS,
+} from "@/lib/constants";
 import { toDisplayStatus, formatPower, formatSqft } from "@/lib/utils";
-import { ChevronUp, ChevronDown, Radio } from "lucide-react";
-import { BasisPopover } from "./BasisPopover";
+import { ChevronUp, ChevronDown, Radio, X } from "lucide-react";
+import { BasisPanel, type BasisPanelData } from "./BasisPanel";
 
 interface DatasetTableProps {
   datacenters: Datacenter[];
   monitors: Monitor[];
 }
-
-type SortField =
-  | "name"
-  | "operator"
-  | "state"
-  | "status"
-  | "type"
-  | "powerMw"
-  | "sqft"
-  | "yearOnline";
 
 const PAGE_SIZE = 50;
 
@@ -32,351 +25,282 @@ function getMonitorForDc(dc: Datacenter, monitors: Monitor[]): Monitor | null {
   return monitors.find((m) => m.id === monId) || null;
 }
 
-function getBasisReasoning(
-  dc: Datacenter,
-  field: string
-): string | undefined {
-  return dc.enrichment?.reasoning?.[field];
-}
-
 export function DatasetTable({ datacenters, monitors }: DatasetTableProps) {
-  const [sortField, setSortField] = useState<SortField>("name");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [sortField, setSortField] = useState("signals");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(0);
+  const [signalModal, setSignalModal] = useState<{ monitor: Monitor; facilityName: string } | null>(null);
+  const [basisData, setBasisData] = useState<BasisPanelData | null>(null);
+
+  const openBasis = useCallback((dc: Datacenter, field: string, value: string) => {
+    const e = dc.enrichment;
+    if (!e) return;
+    setBasisData({
+      field,
+      value: value || "Not found",
+      facilityName: dc.name,
+      citations: e.citations || [],
+      reasoning: e.reasoning?.[field],
+    });
+  }, []);
+
+  const enrichedRows = useMemo(() => {
+    return datacenters.map((dc) => {
+      const monitor = getMonitorForDc(dc, monitors);
+      const events = monitor?.events || [];
+      const newestEvent = events.length > 0
+        ? events.reduce((a, b) => new Date(b.eventDate) > new Date(a.eventDate) ? b : a) : null;
+      return { dc, monitor, events, newestEvent };
+    });
+  }, [datacenters, monitors]);
 
   const sorted = useMemo(() => {
-    return [...datacenters].sort((a, b) => {
-      const aVal = a[sortField as keyof Datacenter];
-      const bVal = b[sortField as keyof Datacenter];
-      const cmp =
-        typeof aVal === "number" && typeof bVal === "number"
-          ? aVal - bVal
-          : String(aVal).localeCompare(String(bVal));
+    return [...enrichedRows].sort((a, b) => {
+      let cmp: number;
+      if (sortField === "signals") {
+        cmp = a.events.length - b.events.length;
+        if (cmp === 0 && a.newestEvent && b.newestEvent)
+          cmp = new Date(a.newestEvent.eventDate).getTime() - new Date(b.newestEvent.eventDate).getTime();
+      } else {
+        const aVal = a.dc[sortField as keyof Datacenter];
+        const bVal = b.dc[sortField as keyof Datacenter];
+        cmp = typeof aVal === "number" && typeof bVal === "number" ? aVal - bVal : String(aVal || "").localeCompare(String(bVal || ""));
+      }
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [datacenters, sortField, sortDir]);
+  }, [enrichedRows, sortField, sortDir]);
 
   const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
   const pageData = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-
-  const totalPowerMw = datacenters.reduce((s, d) => s + d.powerMw, 0);
-  const totalSqft = datacenters.reduce((s, d) => s + d.sqft, 0);
-  const operatorCount = new Set(
-    datacenters.map((d) => d.operator).filter(Boolean)
-  ).size;
   const enrichedCount = datacenters.filter((d) => d.enrichment).length;
 
-  function handleSort(field: SortField) {
-    if (sortField === field) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortField(field);
-      setSortDir(field === "powerMw" || field === "sqft" ? "desc" : "asc");
-    }
+  function handleSort(field: string) {
+    if (sortField === field) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortField(field); setSortDir(field === "powerMw" || field === "sqft" || field === "signals" ? "desc" : "asc"); }
     setPage(0);
   }
 
-  const COLUMNS: {
-    key: SortField;
-    label: string;
-    align?: "right";
-    enriched?: boolean;
-  }[] = [
-    { key: "name", label: "Facility" },
-    { key: "operator", label: "Operator" },
-    { key: "state", label: "State" },
-    { key: "status", label: "Status", enriched: true },
-    { key: "type", label: "Type" },
-    { key: "powerMw", label: "Power", align: "right", enriched: true },
-    { key: "sqft", label: "Size", align: "right", enriched: true },
-    { key: "yearOnline", label: "Year", align: "right", enriched: true },
-    // Enrichment-only columns rendered manually after these
-  ];
-
   return (
-    <div className="flex flex-col h-full bg-white">
-      {/* Summary bar */}
-      <div className="flex items-center gap-6 px-6 py-2.5 border-b border-[#E5E5E5] bg-[#F9F8F4] shrink-0">
-        <Stat label="Facilities" value={datacenters.length.toLocaleString()} />
-        <Stat label="Operators" value={operatorCount.toLocaleString()} />
-        <Stat label="Total power" value={formatPower(totalPowerMw)} />
-        <Stat label="Total footprint" value={formatSqft(totalSqft)} />
-        {enrichedCount > 0 && (
-          <div className="flex items-center gap-1.5 ml-auto">
-            <span className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#FB631B] bg-[#FCDDCF] px-1.5 py-0.5 rounded-[2px]">
-              Task API
-            </span>
-            <span className="font-mono text-[8px] text-[#858483]">
-              {enrichedCount.toLocaleString()} enriched
-            </span>
-          </div>
-        )}
-      </div>
+    <div className="flex h-full">
+      {/* Table area */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Summary */}
+        <div className="flex items-center gap-6 px-6 py-2.5 border-b border-[#E5E5E5] bg-[#F9F8F4] shrink-0">
+          <Stat label="Facilities" value={datacenters.length.toLocaleString()} />
+          <Stat label="Total power" value={formatPower(datacenters.reduce((s, d) => s + d.powerMw, 0))} />
+          {enrichedCount > 0 && (
+            <div className="flex items-center gap-1.5 ml-auto">
+              <span className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#FB631B] bg-[#FCDDCF] px-1.5 py-0.5 rounded-[2px]">Task API</span>
+              <span className="font-mono text-[8px] text-[#858483]">{enrichedCount.toLocaleString()} enriched</span>
+            </div>
+          )}
+        </div>
 
-      <div className="flex-1 overflow-auto">
-        <table className="w-full text-[13px] leading-[16px]">
-          <thead className="sticky top-0 bg-[#F6F6F6] z-10">
-            <tr>
-              {COLUMNS.map((col) => (
-                <th
-                  key={col.key}
-                  onClick={() => handleSort(col.key)}
-                  className={clsx(
-                    "px-4 py-2.5 font-mono font-medium text-[#858483] uppercase tracking-[0.05em] text-[8px] cursor-pointer hover:text-[#1D1B16] select-none border-b border-[#E5E5E5] whitespace-nowrap",
-                    col.align === "right" ? "text-right" : "text-left"
-                  )}
-                >
-                  <span className="inline-flex items-center gap-1">
-                    {col.label}
-                    {col.enriched && enrichedCount > 0 && (
-                      <span className="inline-block w-1 h-1 rounded-full bg-[#FB631B]" />
-                    )}
-                    {sortField === col.key &&
-                      (sortDir === "asc" ? (
-                        <ChevronUp className="w-3 h-3" />
-                      ) : (
-                        <ChevronDown className="w-3 h-3" />
-                      ))}
-                  </span>
-                </th>
-              ))}
-              {/* Enrichment-only columns */}
-              <th className="px-4 py-2.5 font-mono font-medium text-[#858483] uppercase tracking-[0.05em] text-[8px] border-b border-[#E5E5E5] text-left whitespace-nowrap">
-                <span className="inline-flex items-center gap-1">
-                  Tenants
-                  <span className="inline-block w-1 h-1 rounded-full bg-[#FB631B]" />
-                </span>
-              </th>
-              <th className="px-4 py-2.5 font-mono font-medium text-[#858483] uppercase tracking-[0.05em] text-[8px] border-b border-[#E5E5E5] text-left whitespace-nowrap">
-                <span className="inline-flex items-center gap-1">
-                  Latest Update
-                  <span className="inline-block w-1 h-1 rounded-full bg-[#FB631B]" />
-                </span>
-              </th>
-              {/* Monitor signals column */}
-              <th className="px-4 py-2.5 font-mono font-medium text-[#858483] uppercase tracking-[0.05em] text-[8px] border-b border-[#E5E5E5] text-right whitespace-nowrap">
-                <span className="inline-flex items-center gap-1">
-                  Signals
-                  <Radio className="w-2.5 h-2.5 text-[#FB631B]" />
-                </span>
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#F6F6F6]">
-            {pageData.map((dc, i) => {
-              const display = toDisplayStatus(dc.status);
-              const e = dc.enrichment;
-              const citations = e?.citations || [];
-              const monitor = getMonitorForDc(dc, monitors);
-              const monitorEvents = monitor?.events || [];
+        {/* Scrollable table */}
+        <div className="flex-1 overflow-auto">
+          <table className="text-[13px] leading-[16px]">
+            <thead className="sticky top-0 bg-[#F6F6F6] z-10">
+              <tr>
+                <TH f="name" l="Facility" s={sortField} d={sortDir} o={handleSort} sticky />
+                <TH f="signals" l="Monitors" s={sortField} d={sortDir} o={handleSort} icon={<Radio className="w-2.5 h-2.5 text-[#FB631B]" />} />
+                <TH f="operator" l="Operator" s={sortField} d={sortDir} o={handleSort} e />
+                <TH f="owner" l="Owner" s={sortField} d={sortDir} o={handleSort} e />
+                <TH f="state" l="State" s={sortField} d={sortDir} o={handleSort} />
+                <TH f="status" l="Status" s={sortField} d={sortDir} o={handleSort} e />
+                <TH f="type" l="Type" s={sortField} d={sortDir} o={handleSort} />
+                <TH f="powerMw" l="Power" s={sortField} d={sortDir} o={handleSort} a="right" e />
+                <TH f="sqft" l="Size" s={sortField} d={sortDir} o={handleSort} a="right" e />
+                <TH f="yearOnline" l="Year" s={sortField} d={sortDir} o={handleSort} a="right" e />
+                <THE l="Description" />
+                <THE l="Tenants" />
+                <THE l="Latest Update" />
+                <THE l="Utility" />
+                <THE l="Cooling" />
+                <THE l="Tier" />
+                <THE l="Fiber" />
+                <THE l="Buildings" />
+                <THE l="Acres" />
+                <THE l="Hazard Zone" />
+                <THE l="Tax Incentives" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#F6F6F6]">
+              {pageData.map(({ dc, monitor, events }, i) => {
+                const display = toDisplayStatus(dc.status);
+                const e = dc.enrichment;
+                const update = e?.recent_news || e?.construction_update || "";
 
-              return (
-                <tr
-                  key={`row-${dc.lat}-${dc.lng}-${i}`}
-                  className="hover:bg-[#F9F8F4] transition-colors group"
-                >
-                  {/* Facility name — clicking shows description basis */}
-                  <td className="px-4 py-2 font-medium text-[#1D1B16] max-w-[280px]">
-                    {e ? (
-                      <BasisPopover
-                        field="description"
-                        value={e.description}
-                        facilityName={dc.name}
-                        citations={citations}
-                        reasoning={getBasisReasoning(dc, "description")}
-                      >
-                        <span className="truncate block">{dc.name}</span>
-                      </BasisPopover>
-                    ) : (
-                      <span className="truncate block">{dc.name}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-[#5C5B59]">{dc.operator}</td>
-                  <td className="px-4 py-2 text-[#5C5B59]">{dc.state}</td>
-                  {/* Status — enriched, clickable */}
-                  <td className="px-4 py-2">
-                    {e ? (
-                      <BasisPopover
-                        field="verified_status"
-                        value={STATUS_LABELS[display]}
-                        facilityName={dc.name}
-                        citations={citations}
-                        reasoning={getBasisReasoning(dc, "verified_status")}
-                      >
-                        <StatusBadge status={display} />
-                      </BasisPopover>
-                    ) : (
-                      <StatusBadge status={display} />
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-[#5C5B59] capitalize">
-                    {dc.type}
-                  </td>
-                  {/* Power — enriched, clickable even when empty */}
-                  <td className="px-4 py-2 text-[#5C5B59] text-right font-mono tabular-nums">
-                    {e ? (
-                      <BasisPopover
-                        field="power_capacity_mw"
-                        value={dc.powerMw > 0 ? formatPower(dc.powerMw) : "Not found"}
-                        facilityName={dc.name}
-                        citations={citations}
-                        reasoning={getBasisReasoning(dc, "power_capacity_mw")}
-                      >
-                        <span className={dc.powerMw > 0 ? "" : "text-[#D6D6D6]"}>
-                          {dc.powerMw > 0 ? formatPower(dc.powerMw) : "\u2014"}
-                        </span>
-                      </BasisPopover>
-                    ) : (
-                      <span className="text-[#D6D6D6]">{dc.powerMw > 0 ? formatPower(dc.powerMw) : "\u2014"}</span>
-                    )}
-                  </td>
-                  {/* Size — enriched, clickable even when empty */}
-                  <td className="px-4 py-2 text-[#5C5B59] text-right font-mono tabular-nums">
-                    {e ? (
-                      <BasisPopover
-                        field="total_sqft"
-                        value={dc.sqft > 0 ? formatSqft(dc.sqft) : "Not found"}
-                        facilityName={dc.name}
-                        citations={citations}
-                        reasoning={getBasisReasoning(dc, "total_sqft")}
-                      >
-                        <span className={dc.sqft > 0 ? "" : "text-[#D6D6D6]"}>
-                          {dc.sqft > 0 ? formatSqft(dc.sqft) : "\u2014"}
-                        </span>
-                      </BasisPopover>
-                    ) : (
-                      <span className="text-[#D6D6D6]">{dc.sqft > 0 ? formatSqft(dc.sqft) : "\u2014"}</span>
-                    )}
-                  </td>
-                  {/* Year — enriched, clickable even when empty */}
-                  <td className="px-4 py-2 text-[#5C5B59] text-right font-mono tabular-nums">
-                    {e ? (
-                      <BasisPopover
-                        field="year_online"
-                        value={dc.yearOnline !== "unknown" ? dc.yearOnline : "Not found"}
-                        facilityName={dc.name}
-                        citations={citations}
-                        reasoning={getBasisReasoning(dc, "year_online")}
-                      >
-                        <span className={dc.yearOnline !== "unknown" ? "" : "text-[#D6D6D6]"}>
-                          {dc.yearOnline !== "unknown" ? dc.yearOnline : "\u2014"}
-                        </span>
-                      </BasisPopover>
-                    ) : (
-                      <span className="text-[#D6D6D6]">{dc.yearOnline !== "unknown" ? dc.yearOnline : "\u2014"}</span>
-                    )}
-                  </td>
-                  {/* Tenants — enriched, clickable even when empty */}
-                  <td className="px-4 py-2 text-[#5C5B59] max-w-[160px]">
-                    {e ? (
-                      <BasisPopover
-                        field="notable_tenants"
-                        value={e.notable_tenants || "Not found"}
-                        facilityName={dc.name}
-                        citations={citations}
-                        reasoning={getBasisReasoning(dc, "notable_tenants")}
-                      >
-                        <span className={e.notable_tenants ? "truncate block text-[13px]" : "text-[#D6D6D6]"}>
-                          {e.notable_tenants || "\u2014"}
-                        </span>
-                      </BasisPopover>
-                    ) : (
-                      <span className="text-[#D6D6D6]">&mdash;</span>
-                    )}
-                  </td>
-                  {/* Latest Update — enriched, clickable even when empty */}
-                  <td className="px-4 py-2 text-[#5C5B59] max-w-[220px]">
-                    {e ? (
-                      <BasisPopover
-                        field={e.recent_news ? "recent_news" : "construction_update"}
-                        value={e.recent_news || e.construction_update || "No recent updates found"}
-                        facilityName={dc.name}
-                        citations={citations}
-                        reasoning={getBasisReasoning(dc, e.recent_news ? "recent_news" : "construction_update")}
-                      >
-                        {e.recent_news ? (
-                          <span className="truncate block text-[13px] text-[#FB631B]">
-                            {e.recent_news.slice(0, 60)}
-                            {e.recent_news.length > 60 ? "..." : ""}
-                          </span>
-                        ) : e.construction_update ? (
-                          <span className="truncate block text-[13px]">
-                            {e.construction_update.slice(0, 60)}
-                            {e.construction_update.length > 60 ? "..." : ""}
-                          </span>
-                        ) : (
-                          <span className="text-[#D6D6D6]">&mdash;</span>
-                        )}
-                      </BasisPopover>
-                    ) : (
-                      <span className="text-[#D6D6D6]">&mdash;</span>
-                    )}
-                  </td>
-                  {/* Monitor signals */}
-                  <td className="px-4 py-2 text-right">
-                    {monitor && monitorEvents.length > 0 ? (
-                      <div className="flex items-center justify-end gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#FB631B] animate-pulse" />
-                        <span className="font-mono text-[8px] uppercase tracking-[0.05em] text-[#FB631B]">
-                          {monitorEvents.length}
-                        </span>
-                      </div>
-                    ) : monitor ? (
-                      <span className="font-mono text-[8px] text-[#E5E5E5]">
-                        &mdash;
-                      </span>
-                    ) : (
-                      <span className="font-mono text-[8px] text-[#E5E5E5]">
-                        &mdash;
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                return (
+                  <tr key={`${dc.lat}-${dc.lng}-${i}`} className="hover:bg-[#F9F8F4] transition-colors">
+                    {/* Facility — sticky left */}
+                    <td className="px-4 py-2 font-medium text-[#1D1B16] max-w-[240px] sticky left-0 bg-white group-hover:bg-[#F9F8F4] z-[5] border-r border-[#E5E5E5]">
+                      <Cell dc={dc} field="verified_name" value={dc.name} onClick={openBasis} className="truncate block font-medium text-[#1D1B16]" />
+                    </td>
+                    {/* Monitors */}
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      {monitor && events.length > 0 ? (
+                        <button onClick={() => setSignalModal({ monitor, facilityName: dc.name })} className="inline-flex items-center gap-1.5 hover:bg-[#FCDDCF]/30 px-2 py-0.5 rounded-[2px] transition-colors">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#FB631B] animate-pulse" />
+                          <span className="font-mono text-[8px] uppercase tracking-[0.05em] text-[#FB631B]">{events.length}</span>
+                        </button>
+                      ) : <span className="font-mono text-[8px] text-[#E5E5E5]">&mdash;</span>}
+                    </td>
+                    <EC><Cell dc={dc} field="verified_operator" value={dc.operator} onClick={openBasis} /></EC>
+                    <EC className="max-w-[180px]"><Cell dc={dc} field="verified_owner" value={dc.owner} onClick={openBasis} className="truncate block" /></EC>
+                    <td className="px-4 py-2 text-[#5C5B59] whitespace-nowrap">{dc.state}</td>
+                    <EC>
+                      <Cell dc={dc} field="verified_status" value={STATUS_LABELS[display]} onClick={openBasis} displayValue={<StatusBadge status={display} />} />
+                    </EC>
+                    <td className="px-4 py-2 text-[#5C5B59] capitalize whitespace-nowrap">{dc.type}</td>
+                    <EC className="text-right font-mono tabular-nums whitespace-nowrap">
+                      <Cell dc={dc} field="power_capacity_mw" value={dc.powerMw > 0 ? formatPower(dc.powerMw) : ""} onClick={openBasis} />
+                    </EC>
+                    <EC className="text-right font-mono tabular-nums whitespace-nowrap">
+                      <Cell dc={dc} field="total_sqft" value={dc.sqft > 0 ? formatSqft(dc.sqft) : ""} onClick={openBasis} />
+                    </EC>
+                    <EC className="text-right font-mono tabular-nums whitespace-nowrap">
+                      <Cell dc={dc} field="year_online" value={dc.yearOnline !== "unknown" ? dc.yearOnline : ""} onClick={openBasis} />
+                    </EC>
+                    <EC className="max-w-[200px]">
+                      <Cell dc={dc} field="description" value={e?.description || ""} onClick={openBasis} className="truncate block" truncate={60} />
+                    </EC>
+                    <EC className="max-w-[140px]">
+                      <Cell dc={dc} field="notable_tenants" value={e?.notable_tenants || ""} onClick={openBasis} className="truncate block" />
+                    </EC>
+                    <EC className="max-w-[180px]">
+                      <Cell dc={dc} field={e?.recent_news ? "recent_news" : "construction_update"} value={update} onClick={openBasis} className="truncate block" truncate={50} />
+                    </EC>
+                    <EC className="max-w-[140px]"><Cell dc={dc} field="utility_provider" value={e?.utility_provider || ""} onClick={openBasis} className="truncate block" /></EC>
+                    <EC><Cell dc={dc} field="cooling_type" value={e?.cooling_type && e.cooling_type !== "unknown" ? e.cooling_type : ""} onClick={openBasis} /></EC>
+                    <EC className="max-w-[100px]"><Cell dc={dc} field="tier_level" value={e?.tier_level || ""} onClick={openBasis} className="truncate block" /></EC>
+                    <EC className="max-w-[160px]"><Cell dc={dc} field="fiber_providers" value={e?.fiber_providers || ""} onClick={openBasis} className="truncate block" /></EC>
+                    <EC className="text-right font-mono tabular-nums"><Cell dc={dc} field="num_buildings" value={e?.num_buildings && e.num_buildings > 0 ? String(e.num_buildings) : ""} onClick={openBasis} /></EC>
+                    <EC className="text-right font-mono tabular-nums"><Cell dc={dc} field="campus_acres" value={e?.campus_acres && e.campus_acres > 0 ? String(e.campus_acres) : ""} onClick={openBasis} /></EC>
+                    <EC className="max-w-[160px]"><Cell dc={dc} field="natural_hazard_zone" value={e?.natural_hazard_zone || ""} onClick={openBasis} className="truncate block" /></EC>
+                    <EC className="max-w-[180px]"><Cell dc={dc} field="tax_incentives" value={e?.tax_incentives || ""} onClick={openBasis} className="truncate block" /></EC>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
 
-      {/* Pagination */}
-      <div className="flex items-center justify-between px-6 py-2.5 border-t border-[#E5E5E5] bg-[#F6F6F6] text-[13px] text-[#858483] shrink-0">
-        <span className="font-mono text-[8px] uppercase tracking-[0.02em]">
-          Showing {page * PAGE_SIZE + 1}&ndash;
-          {Math.min((page + 1) * PAGE_SIZE, sorted.length)} of{" "}
-          {sorted.length.toLocaleString()}
-        </span>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            disabled={page === 0}
-            className="font-mono uppercase text-[13px] px-3 py-1 border border-[#E5E5E5] rounded-[4px] bg-white hover:border-[#D6D6D6] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            Previous
-          </button>
-          <span className="font-mono text-[8px] uppercase tracking-[0.02em] text-[#ADADAC]">
-            Page {page + 1} of {totalPages}
+        {/* Pagination */}
+        <div className="flex items-center justify-between px-6 py-2.5 border-t border-[#E5E5E5] bg-[#F6F6F6] shrink-0">
+          <span className="font-mono text-[8px] uppercase tracking-[0.02em] text-[#858483]">
+            {page * PAGE_SIZE + 1}&ndash;{Math.min((page + 1) * PAGE_SIZE, sorted.length)} of {sorted.length.toLocaleString()}
           </span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-            disabled={page >= totalPages - 1}
-            className="font-mono uppercase text-[13px] px-3 py-1 border border-[#E5E5E5] rounded-[4px] bg-white hover:border-[#D6D6D6] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            Next
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} className="font-mono uppercase text-[13px] px-3 py-1 border border-[#E5E5E5] rounded-[4px] bg-white hover:border-[#D6D6D6] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">Prev</button>
+            <span className="font-mono text-[8px] uppercase tracking-[0.02em] text-[#ADADAC]">{page + 1}/{totalPages}</span>
+            <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} className="font-mono uppercase text-[13px] px-3 py-1 border border-[#E5E5E5] rounded-[4px] bg-white hover:border-[#D6D6D6] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">Next</button>
+          </div>
         </div>
       </div>
+
+      {/* Basis side panel — fixed right, outside scroll */}
+      {basisData && (
+        <div className="fixed top-0 right-0 h-screen z-[50] shadow-xl">
+          <BasisPanel data={basisData} onClose={() => setBasisData(null)} />
+        </div>
+      )}
+
+      {/* Signal modal */}
+      {signalModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center" style={{ backgroundColor: "rgba(29, 27, 22, 0.5)" }}>
+          <div className="bg-white rounded-[8px] border border-[#E5E5E5] shadow-xl w-[560px] max-w-[90vw] max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#E5E5E5] shrink-0">
+              <div>
+                <div className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#ADADAC] mb-1">Monitor events</div>
+                <div className="text-[16px] font-medium text-[#1D1B16]">{signalModal.monitor.name}</div>
+                <div className="text-[13px] text-[#858483] mt-0.5">{signalModal.monitor.events.length} event{signalModal.monitor.events.length !== 1 ? "s" : ""} &middot; {signalModal.facilityName}</div>
+              </div>
+              <button onClick={() => setSignalModal(null)} className="text-[#ADADAC] hover:text-[#1D1B16] transition-colors p-1"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+              {signalModal.monitor.events.map((evt) => <EvtCard key={evt.eventId} event={evt} />)}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
+/** Clickable enriched cell */
+function Cell({ dc, field, value, onClick, className, displayValue, truncate: trunc }: {
+  dc: Datacenter; field: string; value: string; onClick: (dc: Datacenter, field: string, value: string) => void;
+  className?: string; displayValue?: React.ReactNode; truncate?: number;
+}) {
+  const e = dc.enrichment;
+  const isEmpty = !value || value === "0" || value === "unknown";
+  const shown = trunc && value && value.length > trunc ? value.slice(0, trunc) + "..." : value;
+
+  if (!e) return <span className={clsx(isEmpty ? "text-[#D6D6D6]" : "text-[#5C5B59]", className)}>{isEmpty ? "\u2014" : (displayValue || shown)}</span>;
+
+  return (
+    <button
+      onClick={(ev) => { ev.stopPropagation(); onClick(dc, field, value); }}
+      className={clsx("text-left w-full group cursor-pointer", className)}
+    >
+      <span className="flex items-center gap-1">
+        <span className={isEmpty ? "text-[#D6D6D6]" : "text-[#5C5B59]"}>{isEmpty ? "\u2014" : (displayValue || shown)}</span>
+        <span className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 font-mono text-[8px] text-[#FB631B]">
+          &middot;
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function EC({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <td className={clsx("px-4 py-2 border-l border-[#FCDDCF]/30 whitespace-nowrap", className)}>{children}</td>;
+}
+
+function EvtCard({ event }: { event: MonitorDetection }) {
+  const catColor = MONITOR_CATEGORY_COLORS[event.category] || "#858483";
+  return (
+    <div className="border border-[#E5E5E5] rounded-[4px] px-4 py-3">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="font-mono uppercase text-[8px] tracking-[0.05em] font-medium px-2 py-0.5 rounded-[2px] text-white" style={{ backgroundColor: catColor }}>{MONITOR_CATEGORY_LABELS[event.category] || event.category}</span>
+        <span className="font-mono text-[8px] text-[#ADADAC] ml-auto">{event.eventDate}</span>
+      </div>
+      <h4 className="text-[13px] font-medium text-[#1D1B16] leading-[16px] mb-1">{event.headline}</h4>
+      <p className="text-[13px] text-[#5C5B59] leading-[20px]">{event.summary}</p>
+    </div>
+  );
+}
+
+function TH({ f, l, s, d, o, a, e, sticky, icon }: {
+  f: string; l: string; s: string; d: string; o: (f: string) => void; a?: "right"; e?: boolean; sticky?: boolean; icon?: React.ReactNode;
+}) {
+  return (
+    <th onClick={() => o(f)} className={clsx(
+      "px-4 py-2.5 font-mono font-medium text-[#858483] uppercase tracking-[0.05em] text-[8px] cursor-pointer hover:text-[#1D1B16] select-none border-b border-[#E5E5E5] whitespace-nowrap",
+      a === "right" ? "text-right" : "text-left",
+      e && "border-l border-l-[#FCDDCF]/30",
+      sticky && "sticky left-0 bg-[#F6F6F6] z-[11] border-r border-[#E5E5E5]"
+    )}>
+      <span className="inline-flex items-center gap-1">
+        {l}{e && <span className="inline-block w-1 h-1 rounded-full bg-[#FB631B]" />}{icon}
+        {s === f && (d === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
+      </span>
+    </th>
+  );
+}
+
+function THE({ l }: { l: string }) {
+  return (
+    <th className="px-4 py-2.5 font-mono font-medium text-[#858483] uppercase tracking-[0.05em] text-[8px] border-b border-[#E5E5E5] border-l border-l-[#FCDDCF]/30 text-left whitespace-nowrap">
+      <span className="inline-flex items-center gap-1">{l} <span className="inline-block w-1 h-1 rounded-full bg-[#FB631B]" /></span>
+    </th>
+  );
+}
+
 function StatusBadge({ status }: { status: DisplayStatus }) {
-  const color = STATUS_COLORS[status];
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span
-        className="w-2 h-2 rounded-full"
-        style={{ backgroundColor: color }}
-      />
+      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS[status] }} />
       <span className="text-[#5C5B59]">{STATUS_LABELS[status]}</span>
     </span>
   );
@@ -385,12 +309,8 @@ function StatusBadge({ status }: { status: DisplayStatus }) {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline gap-1.5">
-      <span className="font-mono text-[8px] uppercase tracking-[0.05em] text-[#858483]">
-        {label}
-      </span>
-      <span className="text-[13px] font-medium text-[#1D1B16] font-mono tabular-nums">
-        {value}
-      </span>
+      <span className="font-mono text-[8px] uppercase tracking-[0.05em] text-[#858483]">{label}</span>
+      <span className="text-[13px] font-medium text-[#1D1B16] font-mono tabular-nums">{value}</span>
     </div>
   );
 }

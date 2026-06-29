@@ -13,7 +13,7 @@ export const STATUS_COLORS: Record<DisplayStatus, string> = {
   construction: "#F79A6F",
   planned: "#ADADAC",
   unknown: "#D6D6D6",
-  decommissioned: "#E5E5E5",
+  decommissioned: "#858483",
 };
 
 export const STATUS_LABELS: Record<DisplayStatus, string> = {
