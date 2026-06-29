@@ -190,7 +190,7 @@ export function ResearchReport({ event, monitor, onClose }: ResearchReportProps)
           {status === "idle" && (
             <div className="px-6 py-12 text-center">
               <p className="text-[13px] text-[#858483] mb-4">
-                Generate a comprehensive research report using Parallel&apos;s ultra-fast deep research processor.
+                Generate a comprehensive research report using Parallel&apos;s ultra deep research processor.
               </p>
               <button onClick={generateReport} className="font-mono uppercase text-[13px] px-6 py-2.5 bg-[#FB631B] text-white rounded-[4px] hover:bg-[#F4793F] transition-colors">
                 Generate Report
@@ -255,7 +255,7 @@ export function ResearchReport({ event, monitor, onClose }: ResearchReportProps)
           <div className="flex items-center gap-2">
             <span className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#FB631B] bg-[#FCDDCF] px-1.5 py-0.5 rounded-[2px]">Task API</span>
             <span className="font-mono text-[8px] text-[#ADADAC]">
-              ultra-fast &middot; text mode{runId && ` · ${runId}`}
+              ultra &middot; text mode{runId && ` · ${runId}`}
             </span>
             <button onClick={() => setShowCode(!showCode)} className="flex items-center gap-1 font-mono uppercase text-[8px] tracking-[0.05em] text-[#ADADAC] hover:text-[#1D1B16] transition-colors ml-auto">
               <Code className="w-2.5 h-2.5" />
@@ -271,7 +271,7 @@ export function ResearchReport({ event, monitor, onClose }: ResearchReportProps)
                   interaction_id: event.eventId,
                   enable_events: true,
                   task_spec: { output_schema: { type: "text", description: "Markdown-formatted research report" } },
-                  processor: "ultra-fast",
+                  processor: "ultra",
                 }, null, 2)}
               />
             </div>
