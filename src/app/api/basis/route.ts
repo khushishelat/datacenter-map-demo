@@ -11,8 +11,11 @@ async function loadEnrichments(): Promise<Record<string, unknown>> {
   const blobUrl = process.env.ENRICHMENTS_BLOB_URL;
 
   if (blobUrl) {
-    // Production: fetch from Vercel Blob
-    const res = await fetch(blobUrl, { cache: "no-store" });
+    // Production: fetch from Vercel Blob (private store needs token)
+    const token = process.env.BLOB_READ_WRITE_TOKEN;
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(blobUrl, { cache: "no-store", headers });
     if (res.ok) {
       cachedEnrichments = await res.json();
       return cachedEnrichments!;

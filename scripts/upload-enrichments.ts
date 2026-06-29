@@ -29,7 +29,8 @@ async function main() {
   const fileBuffer = fs.readFileSync(filePath);
 
   const blob = await put("enrichments.json", fileBuffer, {
-    access: "public",
+    access: "private",
+    allowOverwrite: true,
     contentType: "application/json",
     token,
   });
