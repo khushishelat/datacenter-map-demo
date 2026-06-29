@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo } from "react";
 import clsx from "clsx";
 import { ExternalLink, FileText } from "lucide-react";
 import type { Monitor, MonitorDetection } from "@/lib/types";
@@ -67,31 +67,6 @@ export function MonitorPanel({
     () => allEvents.filter((e) => e.event.severity === "critical"),
     [allEvents]
   );
-
-  // Auto-generate reports for critical events
-  const autoTriggered = useRef(new Set<string>());
-  useEffect(() => {
-    for (const { event, monitor } of criticalEvents) {
-      if (autoTriggered.current.has(event.eventId)) continue;
-      if (reportStates[event.eventId]) continue;
-      autoTriggered.current.add(event.eventId);
-      // Fire and forget
-      fetch("/api/research", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          eventId: event.eventId,
-          headline: event.headline,
-          summary: event.summary,
-          monitorName: monitor.name,
-        }),
-      }).then((r) => r.json()).then((data) => {
-        if (data.runId) {
-          handleReportStatusChange(event.eventId, "running", undefined, data.runId);
-        }
-      }).catch(() => {});
-    }
-  }, [criticalEvents, reportStates]);
 
   const classCounts: Record<ClassFilter, number> = {
     all: monitors.length,
