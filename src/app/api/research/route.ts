@@ -113,8 +113,58 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ status: "completed", content: saved.content, runId: saved.runId });
   }
 
+  const stream = request.nextUrl.searchParams.get("stream") === "true";
   const activeRunId = saved?.runId || clientRunId;
   if (!activeRunId) return NextResponse.json({ status: "not_started" });
+
+  // Stream mode: proxy SSE from Parallel
+  if (stream && API_KEY) {
+    const sseRes = await fetch(`${BASE_URL}/v1/tasks/runs/${activeRunId}/events`, {
+      headers: { "x-api-key": API_KEY },
+    });
+
+    if (!sseRes.ok || !sseRes.body) {
+      return NextResponse.json({ status: "error" }, { status: 500 });
+    }
+
+    const reader = sseRes.body.getReader();
+    const encoder = new TextEncoder();
+
+    const responseStream = new ReadableStream({
+      async start(controller) {
+        const decoder = new TextDecoder();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            controller.enqueue(encoder.encode(chunk));
+
+            if (chunk.includes('"completed"') || chunk.includes('"failed"')) {
+              try {
+                const resultRes = await fetch(`${BASE_URL}/v1/tasks/runs/${activeRunId}/result`, {
+                  headers: { "x-api-key": API_KEY },
+                });
+                if (resultRes.ok) {
+                  const result = await resultRes.json();
+                  const content = result.output?.content || "";
+                  const map = await getReportMap();
+                  map[eventId!] = { runId: activeRunId, status: "completed", content };
+                  await saveReportMap(map);
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "report.complete", content })}\n\n`));
+                }
+              } catch {}
+            }
+          }
+        } catch {}
+        controller.close();
+      },
+    });
+
+    return new Response(responseStream, {
+      headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive" },
+    });
+  }
 
   // Check task status from Parallel
   try {

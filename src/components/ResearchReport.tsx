@@ -59,14 +59,46 @@ export function ResearchReport({ event, monitor, onClose, existingState, onStatu
     setTimeout(() => { if (pollRef.current) clearInterval(pollRef.current); }, 300000);
   }, [onStatusChange]);
 
-  // If existing state says running, start polling for completion
+  // If existing state says running, reconnect to the stream
   useEffect(() => {
     if (existingState?.status === "running" && existingState.runId) {
       setRunId(existingState.runId);
-      startPolling(event.eventId, existingState.runId);
+      setStatus("running");
+      // Connect to SSE to show live progress
+      const es = new EventSource(`/api/research?eventId=${encodeURIComponent(event.eventId)}&runId=${encodeURIComponent(existingState.runId)}&stream=true`);
+      es.onmessage = (msg) => {
+        try {
+          const d = JSON.parse(msg.data);
+          if (d.type === "report.complete") {
+            setContent(d.content);
+            setStatus("completed");
+            onStatusChange?.(event.eventId, "completed", d.content, existingState.runId);
+            es.close();
+          } else if (d.type?.includes("search")) {
+            addMessage("search", d.message, d.timestamp);
+          } else if (d.type?.includes("plan")) {
+            addMessage("plan", d.message, d.timestamp);
+          } else if (d.type?.includes("result")) {
+            addMessage("result", d.message, d.timestamp);
+          } else if (d.type?.includes("exec_status")) {
+            addMessage("status", d.message, d.timestamp);
+          } else if (d.type?.includes("progress_stats")) {
+            setStats({
+              considered: d.source_stats?.num_sources_considered || 0,
+              read: d.source_stats?.num_sources_read || 0,
+              progress: d.progress_meter || 0,
+            });
+          } else if (d.type === "task_run.state" && d.run?.status === "completed") {
+            startPolling(event.eventId, existingState.runId);
+            es.close();
+          }
+        } catch {}
+      };
+      es.onerror = () => { es.close(); startPolling(event.eventId, existingState.runId); };
+      return () => { es.close(); if (pollRef.current) clearInterval(pollRef.current); };
     }
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [event.eventId, startPolling]);
+  }, [event.eventId, existingState, startPolling, onStatusChange]);
 
   async function generateReport() {
     setStatus("running");
@@ -100,7 +132,7 @@ export function ResearchReport({ event, monitor, onClose, existingState, onStatu
       setRunId(data.runId);
 
       // Connect to SSE
-      const es = new EventSource(`/api/research?eventId=${encodeURIComponent(event.eventId)}&stream=true`);
+      const es = new EventSource(`/api/research?eventId=${encodeURIComponent(event.eventId)}&runId=${encodeURIComponent(data.runId)}&stream=true`);
 
       es.addEventListener("task_run.progress_msg.exec_status", (e) => {
         const d = JSON.parse(e.data);
