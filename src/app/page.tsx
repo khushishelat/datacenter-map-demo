@@ -59,7 +59,7 @@ export default function Home() {
         onTabChange={setActiveTab}
         activeFilter={activeFilter}
         counts={counts}
-        onFilterChange={setActiveFilter}
+        onFilterChange={(f) => { setActiveFilter(f); setSelectedMonitor(null); }}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         trackedCount={filtered.length}

@@ -159,8 +159,8 @@ export function DatasetTable({ datacenters, monitors }: DatasetTableProps) {
                     <EC className="text-right font-mono tabular-nums whitespace-nowrap">
                       <Cell dc={dc} field="total_sqft" value={dc.sqft > 0 ? formatSqft(dc.sqft) : ""} onClick={openBasis} facilityIndex={originalIndex} />
                     </EC>
-                    <EC className="text-right font-mono tabular-nums whitespace-nowrap">
-                      <Cell dc={dc} field="year_online" value={dc.yearOnline !== "unknown" ? dc.yearOnline : ""} onClick={openBasis} facilityIndex={originalIndex} />
+                    <EC className="text-right font-mono tabular-nums whitespace-nowrap max-w-[80px]">
+                      <Cell dc={dc} field="year_online" value={dc.yearOnline !== "unknown" ? dc.yearOnline : ""} onClick={openBasis} facilityIndex={originalIndex} truncate={8} className="truncate block" />
                     </EC>
                     <EC className="max-w-[200px]">
                       <Cell dc={dc} field="description" value={e?.description || ""} onClick={openBasis} facilityIndex={originalIndex} className="truncate block" truncate={60} />

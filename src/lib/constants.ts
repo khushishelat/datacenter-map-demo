@@ -11,9 +11,9 @@ export const STATUS_MAP: Record<string, DisplayStatus> = {
 export const STATUS_COLORS: Record<DisplayStatus, string> = {
   operational: "#FB631B",
   construction: "#F79A6F",
-  planned: "#ADADAC",
+  planned: "#5C5B59",
   unknown: "#D6D6D6",
-  decommissioned: "#858483",
+  decommissioned: "#434343",
 };
 
 export const STATUS_LABELS: Record<DisplayStatus, string> = {
