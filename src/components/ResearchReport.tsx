@@ -32,9 +32,12 @@ export function ResearchReport({ event, monitor, onClose, existingState, onStatu
   const streamRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
+  // Only auto-scroll during streaming, not when showing completed report
   useEffect(() => {
-    if (streamRef.current) streamRef.current.scrollTop = streamRef.current.scrollHeight;
-  }, [messages, content]);
+    if (status === "running" && streamRef.current) {
+      streamRef.current.scrollTop = streamRef.current.scrollHeight;
+    }
+  }, [messages, status]);
 
   const startPolling = useCallback((eid: string, rid?: string) => {
     if (pollRef.current) clearInterval(pollRef.current);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import clsx from "clsx";
 import { ExternalLink, FileText } from "lucide-react";
 import type { Monitor, MonitorDetection } from "@/lib/types";
@@ -78,6 +78,25 @@ export function MonitorPanel({
     () => allEvents.filter((e) => e.event.severity === "critical"),
     [allEvents]
   );
+
+  // Check report status for all events on mount
+  const checkedReports = useRef(false);
+  useEffect(() => {
+    if (checkedReports.current || allEvents.length === 0) return;
+    checkedReports.current = true;
+    for (const { event } of allEvents) {
+      fetch(`/api/research?eventId=${encodeURIComponent(event.eventId)}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.content) {
+            setReportStates((prev) => ({ ...prev, [event.eventId]: { status: "completed", content: data.content, runId: data.runId } }));
+          } else if (data.runId && data.status === "running") {
+            setReportStates((prev) => ({ ...prev, [event.eventId]: { status: "running", runId: data.runId } }));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [allEvents]);
 
   const classCounts: Record<ClassFilter, number> = {
     all: monitors.length,
