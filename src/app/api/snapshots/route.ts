@@ -1,26 +1,12 @@
 import { NextResponse } from "next/server";
+import snapshotData from "@/data/snapshot-monitors.json";
 
 export const dynamic = "force-dynamic";
 
 const API_KEY = process.env.PARALLEL_API_KEY || "";
 const BASE_URL = "https://api.parallel.ai";
 
-// Import snapshot monitor IDs
-let snapshotMonitors: Record<string, { monitorId: string; runId: string; facilityName: string }> | null = null;
-
-async function getSnapshotMonitors() {
-  if (snapshotMonitors) return snapshotMonitors;
-  try {
-    const fs = await import("fs");
-    const path = await import("path");
-    const filePath = path.join(process.cwd(), "src/data/snapshot-monitors.json");
-    if (fs.existsSync(filePath)) {
-      snapshotMonitors = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-      return snapshotMonitors!;
-    }
-  } catch {}
-  return {};
-}
+const snapshotMonitors = snapshotData as Record<string, { monitorId: string; runId: string; facilityName: string }>;
 
 export interface SnapshotUpdate {
   facilityIndex: string;
@@ -31,7 +17,7 @@ export interface SnapshotUpdate {
   changes: Record<string, { from: unknown; to: unknown }>;
 }
 
-// Cache results for 30s to avoid hammering the API
+// Cache results for 30s
 let cachedUpdates: SnapshotUpdate[] | null = null;
 let cacheTime = 0;
 const CACHE_TTL = 30_000;
@@ -67,17 +53,14 @@ async function fetchSnapshotEvents(monitorId: string) {
 export async function GET() {
   if (!API_KEY) return NextResponse.json({ updates: [], total: 0 });
 
-  // Return cache if fresh
   if (cachedUpdates && Date.now() - cacheTime < CACHE_TTL) {
-    return NextResponse.json({ updates: cachedUpdates, total: Object.keys(await getSnapshotMonitors()).length, cached: true });
+    return NextResponse.json({ updates: cachedUpdates, total: Object.keys(snapshotMonitors).length, cached: true });
   }
 
   try {
-    const monitors = await getSnapshotMonitors();
-    const entries = Object.entries(monitors);
+    const entries = Object.entries(snapshotMonitors);
     if (entries.length === 0) return NextResponse.json({ updates: [], total: 0 });
 
-    // Check in parallel batches of 30
     const BATCH = 30;
     const updates: SnapshotUpdate[] = [];
 
