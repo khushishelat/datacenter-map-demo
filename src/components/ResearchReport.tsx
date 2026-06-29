@@ -155,7 +155,7 @@ export function ResearchReport({ event, monitor, onClose, existingState, onStatu
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center" style={{ backgroundColor: "rgba(29, 27, 22, 0.6)" }}>
-      <div className="bg-white rounded-[8px] border border-[#E5E5E5] shadow-xl w-[760px] max-w-[90vw] max-h-[85vh] overflow-hidden flex flex-col">
+      <div className={`bg-white rounded-[8px] border border-[#E5E5E5] shadow-xl max-w-[90vw] max-h-[85vh] overflow-hidden flex flex-col ${status === "completed" ? "w-[900px]" : "w-[760px]"}`}>
         {/* Header */}
         <div className="flex items-start justify-between px-6 py-4 border-b border-[#E5E5E5] shrink-0">
           <div>
@@ -223,9 +223,7 @@ export function ResearchReport({ event, monitor, onClose, existingState, onStatu
           )}
 
           {status === "completed" && content && (
-            <div className="px-6 py-4">
-              <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: markdownToHtml(content) }} />
-            </div>
+            <ReportContent content={content} />
           )}
 
           {status === "error" && (
@@ -268,16 +266,111 @@ export function ResearchReport({ event, monitor, onClose, existingState, onStatu
   );
 }
 
+function ReportContent({ content }: { content: string }) {
+  // Extract headings for TOC
+  const headings: { level: number; text: string; id: string }[] = [];
+  content.replace(/^(#{1,3}) (.+)$/gm, (_, hashes, text) => {
+    const id = text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    headings.push({ level: hashes.length, text, id });
+    return "";
+  });
+
+  return (
+    <div className="flex h-full">
+      {/* TOC sidebar */}
+      {headings.length > 2 && (
+        <div className="w-[200px] shrink-0 border-r border-[#E5E5E5] overflow-y-auto py-4 px-4">
+          <div className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#ADADAC] mb-3">
+            Contents
+          </div>
+          <nav className="space-y-1">
+            {headings.map((h, i) => (
+              <a
+                key={i}
+                href={`#report-${h.id}`}
+                className={`block text-[11px] leading-[16px] text-[#858483] hover:text-[#FB631B] transition-colors truncate ${
+                  h.level === 1 ? "font-medium text-[#1D1B16]" : h.level === 2 ? "pl-2" : "pl-4 text-[#ADADAC]"
+                }`}
+              >
+                {h.text}
+              </a>
+            ))}
+          </nav>
+        </div>
+      )}
+      {/* Report body */}
+      <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="max-w-none" dangerouslySetInnerHTML={{ __html: markdownToHtml(content) }} />
+      </div>
+    </div>
+  );
+}
+
 function markdownToHtml(md: string): string {
-  return md
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/^### (.+)$/gm, '<h3 class="text-[14px] font-medium text-[#1D1B16] mt-4 mb-1">$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2 class="text-[15px] font-medium text-[#1D1B16] mt-5 mb-2">$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1 class="text-[16px] font-medium text-[#1D1B16] mt-6 mb-2">$1</h1>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong class="font-medium text-[#1D1B16]">$1</strong>')
-    .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-[#FB631B] hover:underline">$1</a>')
-    .replace(/^- (.+)$/gm, '<li class="text-[13px] text-[#5C5B59] ml-4 list-disc">$1</li>')
-    .replace(/\n\n/g, '</p><p class="text-[13px] text-[#5C5B59] leading-[20px] mb-2">')
-    .replace(/\n/g, "<br/>")
-    .replace(/^/, '<p class="text-[13px] text-[#5C5B59] leading-[20px] mb-2">').replace(/$/, "</p>");
+  let html = md;
+
+  // Escape HTML
+  html = html.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  // Tables: detect pipe-delimited rows
+  html = html.replace(
+    /((?:^\|.+\|$\n?)+)/gm,
+    (tableBlock) => {
+      const rows = tableBlock.trim().split("\n").filter((r) => r.trim());
+      if (rows.length < 2) return tableBlock;
+
+      // Check if second row is separator (|---|---|)
+      const isSep = (r: string) => /^\|[\s-:|]+\|$/.test(r);
+      const hasSep = rows.length >= 2 && isSep(rows[1]);
+
+      let out = '<div class="overflow-x-auto my-3"><table class="w-full text-[12px] border border-[#E5E5E5] rounded-[4px]">';
+
+      rows.forEach((row, i) => {
+        if (hasSep && i === 1) return; // skip separator row
+        const cells = row.split("|").filter((_, ci) => ci > 0 && ci < row.split("|").length - 1).map((c) => c.trim());
+        const isHeader = hasSep && i === 0;
+        const tag = isHeader ? "th" : "td";
+        const cellClass = isHeader
+          ? 'class="px-3 py-2 text-left font-mono uppercase text-[8px] tracking-[0.05em] text-[#858483] bg-[#F6F6F6] border-b border-[#E5E5E5]"'
+          : 'class="px-3 py-2 text-[#5C5B59] border-b border-[#F6F6F6]"';
+        out += "<tr>" + cells.map((c) => `<${tag} ${cellClass}>${c}</${tag}>`).join("") + "</tr>";
+      });
+
+      out += "</table></div>";
+      return out;
+    }
+  );
+
+  // Headers with IDs for TOC
+  html = html.replace(/^### (.+)$/gm, (_, t) => {
+    const id = t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    return `<h3 id="report-${id}" class="text-[14px] font-medium text-[#1D1B16] mt-5 mb-1.5">${t}</h3>`;
+  });
+  html = html.replace(/^## (.+)$/gm, (_, t) => {
+    const id = t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    return `<h2 id="report-${id}" class="text-[15px] font-medium text-[#1D1B16] mt-6 mb-2 pb-1 border-b border-[#E5E5E5]">${t}</h2>`;
+  });
+  html = html.replace(/^# (.+)$/gm, (_, t) => {
+    const id = t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    return `<h1 id="report-${id}" class="text-[16px] font-medium text-[#1D1B16] mt-6 mb-2 pb-1 border-b border-[#E5E5E5]">${t}</h1>`;
+  });
+
+  // Bold
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong class="font-medium text-[#1D1B16]">$1</strong>');
+
+  // Links
+  html = html.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-[#FB631B] hover:underline">$1</a>');
+
+  // Bullet lists
+  html = html.replace(/^- (.+)$/gm, '<li class="text-[13px] text-[#5C5B59] ml-4 list-disc mb-1">$1</li>');
+
+  // Numbered lists
+  html = html.replace(/^\d+\. (.+)$/gm, '<li class="text-[13px] text-[#5C5B59] ml-4 list-decimal mb-1">$1</li>');
+
+  // Paragraphs
+  html = html.replace(/\n\n/g, '</p><p class="text-[13px] text-[#5C5B59] leading-[20px] mb-2">');
+  html = html.replace(/\n/g, "<br/>");
+  html = '<p class="text-[13px] text-[#5C5B59] leading-[20px] mb-2">' + html + "</p>";
+
+  return html;
 }
