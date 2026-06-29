@@ -27,6 +27,12 @@ export function MonitorPanel({
 }: MonitorPanelProps) {
   const [classFilter, setClassFilter] = useState<ClassFilter>("all");
   const [reportTarget, setReportTarget] = useState<{ event: MonitorDetection; monitor: Monitor } | null>(null);
+  const [generatingReports, setGeneratingReports] = useState<Set<string>>(new Set());
+
+  function handleOpenReport(event: MonitorDetection, monitor: Monitor) {
+    setGeneratingReports((prev) => new Set(prev).add(event.eventId));
+    setReportTarget({ event, monitor });
+  }
 
   const filtered =
     classFilter === "all" || classFilter === "critical"
@@ -117,7 +123,8 @@ export function MonitorPanel({
                   key={event.eventId}
                   event={event}
                   monitor={monitor}
-                  onGenerateReport={() => setReportTarget({ event, monitor })}
+                  onGenerateReport={() => handleOpenReport(event, monitor)}
+                  isGenerating={generatingReports.has(event.eventId)}
                 />
               ))}
             </div>
@@ -135,7 +142,8 @@ export function MonitorPanel({
                   key={event.eventId}
                   event={event}
                   monitor={monitor}
-                  onGenerateReport={() => setReportTarget({ event, monitor })}
+                  onGenerateReport={() => handleOpenReport(event, monitor)}
+                  isGenerating={generatingReports.has(event.eventId)}
                   showReportButton
                 />
               ))}
@@ -178,11 +186,13 @@ function FeedEventCard({
   monitor,
   onGenerateReport,
   showReportButton,
+  isGenerating,
 }: {
   event: MonitorDetection;
   monitor: Monitor;
   onGenerateReport: () => void;
   showReportButton?: boolean;
+  isGenerating?: boolean;
 }) {
   const catLabel = MONITOR_CATEGORY_LABELS[event.category] || event.category;
   const catColor = MONITOR_CATEGORY_COLORS[event.category] || "#858483";
@@ -235,13 +245,15 @@ function FeedEventCard({
           onClick={onGenerateReport}
           className={clsx(
             "inline-flex items-center gap-1 font-mono text-[8px] uppercase tracking-[0.02em] border rounded-[2px] px-2 py-1 transition-colors",
-            showReportButton
-              ? "text-[#FB631B] border-[#FB631B] bg-[#FCDDCF]/30 hover:bg-[#FCDDCF]"
-              : "text-[#ADADAC] border-[#E5E5E5] hover:border-[#FB631B] hover:text-[#FB631B]"
+            isGenerating
+              ? "text-[#FB631B] border-[#FB631B] bg-[#FCDDCF]/30 animate-pulse"
+              : showReportButton
+                ? "text-[#FB631B] border-[#FB631B] bg-[#FCDDCF]/30 hover:bg-[#FCDDCF]"
+                : "text-[#ADADAC] border-[#E5E5E5] hover:border-[#FB631B] hover:text-[#FB631B]"
           )}
         >
           <FileText className="w-2.5 h-2.5" />
-          Generate report
+          {isGenerating ? "Report generating..." : "Generate report"}
         </button>
       </div>
     </div>
