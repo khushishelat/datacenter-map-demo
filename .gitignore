@@ -45,3 +45,4 @@ public/data/enrichments.json
 src/data/backfill-results.json
 src/data/enrichment-runs.json
 src/data/enrichment-v2-runs.json
+.env*.local
