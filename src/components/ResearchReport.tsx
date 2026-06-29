@@ -64,41 +64,46 @@ export function ResearchReport({ event, monitor, onClose, existingState, onStatu
     if (existingState?.status === "running" && existingState.runId) {
       setRunId(existingState.runId);
       setStatus("running");
-      // Connect to SSE to show live progress
-      const es = new EventSource(`/api/research?eventId=${encodeURIComponent(event.eventId)}&runId=${encodeURIComponent(existingState.runId)}&stream=true`);
-      es.onmessage = (msg) => {
-        try {
-          const d = JSON.parse(msg.data);
-          if (d.type === "report.complete") {
-            setContent(d.content);
-            setStatus("completed");
-            onStatusChange?.(event.eventId, "completed", d.content, existingState.runId);
-            es.close();
-          } else if (d.type?.includes("search")) {
-            addMessage("search", d.message, d.timestamp);
-          } else if (d.type?.includes("plan")) {
-            addMessage("plan", d.message, d.timestamp);
-          } else if (d.type?.includes("result")) {
-            addMessage("result", d.message, d.timestamp);
-          } else if (d.type?.includes("exec_status")) {
-            addMessage("status", d.message, d.timestamp);
-          } else if (d.type?.includes("progress_stats")) {
-            setStats({
-              considered: d.source_stats?.num_sources_considered || 0,
-              read: d.source_stats?.num_sources_read || 0,
-              progress: d.progress_meter || 0,
-            });
-          } else if (d.type === "task_run.state" && d.run?.status === "completed") {
-            startPolling(event.eventId, existingState.runId);
-            es.close();
-          }
-        } catch {}
-      };
-      es.onerror = () => { es.close(); startPolling(event.eventId, existingState.runId); };
+      const es = connectToStream(event.eventId, existingState.runId);
       return () => { es.close(); if (pollRef.current) clearInterval(pollRef.current); };
     }
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [event.eventId, existingState, startPolling, onStatusChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.eventId, existingState?.runId]);
+
+  function connectToStream(eid: string, rid: string) {
+    const es = new EventSource(`/api/research?eventId=${encodeURIComponent(eid)}&runId=${encodeURIComponent(rid)}&stream=true`);
+    es.onmessage = (msg) => {
+      try {
+        const d = JSON.parse(msg.data);
+        if (d.type === "report.complete") {
+          setContent(d.content);
+          setStatus("completed");
+          onStatusChange?.(eid, "completed", d.content, rid);
+          es.close();
+        } else if (d.type?.includes("search")) {
+          addMessage("search", d.message, d.timestamp);
+        } else if (d.type?.includes("plan")) {
+          addMessage("plan", d.message, d.timestamp);
+        } else if (d.type?.includes("result") && !d.type?.includes("stats")) {
+          addMessage("result", d.message, d.timestamp);
+        } else if (d.type?.includes("exec_status")) {
+          addMessage("status", d.message, d.timestamp);
+        } else if (d.type?.includes("progress_stats")) {
+          setStats({
+            considered: d.source_stats?.num_sources_considered || 0,
+            read: d.source_stats?.num_sources_read || 0,
+            progress: d.progress_meter || 0,
+          });
+        } else if (d.type === "task_run.state" && d.run?.status === "completed") {
+          startPolling(eid, rid);
+          es.close();
+        }
+      } catch {}
+    };
+    es.onerror = () => { es.close(); startPolling(eid, rid); };
+    return es;
+  }
 
   async function generateReport() {
     setStatus("running");
@@ -131,71 +136,8 @@ export function ResearchReport({ event, monitor, onClose, existingState, onStatu
       onStatusChange?.(event.eventId, "running", undefined, data.runId);
       setRunId(data.runId);
 
-      // Connect to SSE
-      const es = new EventSource(`/api/research?eventId=${encodeURIComponent(event.eventId)}&runId=${encodeURIComponent(data.runId)}&stream=true`);
-
-      es.addEventListener("task_run.progress_msg.exec_status", (e) => {
-        const d = JSON.parse(e.data);
-        addMessage("status", d.message, d.timestamp);
-      });
-
-      es.addEventListener("task_run.progress_msg.search", (e) => {
-        const d = JSON.parse(e.data);
-        addMessage("search", d.message, d.timestamp);
-      });
-
-      es.addEventListener("task_run.progress_msg.plan", (e) => {
-        const d = JSON.parse(e.data);
-        addMessage("plan", d.message, d.timestamp);
-      });
-
-      es.addEventListener("task_run.progress_msg.result", (e) => {
-        const d = JSON.parse(e.data);
-        addMessage("result", d.message, d.timestamp);
-      });
-
-      es.addEventListener("task_run.progress_stats", (e) => {
-        const d = JSON.parse(e.data);
-        setStats({
-          considered: d.source_stats?.num_sources_considered || 0,
-          read: d.source_stats?.num_sources_read || 0,
-          progress: d.progress_meter || 0,
-        });
-      });
-
-      // Fallback: also use onmessage for events without named types
-      es.onmessage = (msg) => {
-        try {
-          const d = JSON.parse(msg.data);
-          if (d.type === "report.complete") {
-            setContent(d.content);
-            setStatus("completed");
-            es.close();
-          } else if (d.type === "task_run.progress_msg.search") {
-            addMessage("search", d.message, d.timestamp);
-          } else if (d.type === "task_run.progress_msg.plan") {
-            addMessage("plan", d.message, d.timestamp);
-          } else if (d.type === "task_run.progress_msg.result") {
-            addMessage("result", d.message, d.timestamp);
-          } else if (d.type === "task_run.progress_msg.exec_status") {
-            addMessage("status", d.message, d.timestamp);
-          } else if (d.type === "task_run.progress_stats") {
-            setStats({
-              considered: d.source_stats?.num_sources_considered || 0,
-              read: d.source_stats?.num_sources_read || 0,
-              progress: d.progress_meter || 0,
-            });
-          } else if (d.type === "task_run.state" && d.run?.status === "completed") {
-            startPolling(event.eventId, data.runId);
-            es.close();
-          }
-        } catch {}
-      };
-
-      es.onerror = () => {
-        es.close();
-        startPolling(event.eventId, data.runId);
-      };
+      // Connect to SSE (event names stripped by proxy, all come through onmessage)
+      connectToStream(event.eventId, data.runId);
     }
   }
 

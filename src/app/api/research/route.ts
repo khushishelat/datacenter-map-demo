@@ -138,7 +138,9 @@ export async function GET(request: NextRequest) {
             const { done, value } = await reader.read();
             if (done) break;
             const chunk = decoder.decode(value, { stream: true });
-            controller.enqueue(encoder.encode(chunk));
+            // Strip "event: ..." lines so all events go through onmessage
+            const cleaned = chunk.replace(/^event:.*\n/gm, "");
+            controller.enqueue(encoder.encode(cleaned));
 
             if (chunk.includes('"completed"') || chunk.includes('"failed"')) {
               try {
