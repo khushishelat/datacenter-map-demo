@@ -31,7 +31,12 @@ export function DatasetTable({ datacenters, monitors, snapshotUpdates = {} }: Da
   const [sortField, setSortField] = useState("signals");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(0);
-  const [signalModal, setSignalModal] = useState<{ monitor: Monitor; facilityName: string } | null>(null);
+  const [signalModal, setSignalModal] = useState<{
+    monitor: Monitor | null;
+    facilityName: string;
+    facilityIndex: number;
+    snapshot: SnapshotUpdate | null;
+  } | null>(null);
   const [basisData, setBasisData] = useState<BasisPanelData | null>(null);
 
   const openBasis = useCallback((dc: Datacenter, field: string, value: string, facilityIndex: number) => {
@@ -141,22 +146,36 @@ export function DatasetTable({ datacenters, monitors, snapshotUpdates = {} }: Da
                     </td>
                     {/* Monitors */}
                     <td className="px-4 py-2 whitespace-nowrap">
-                      <div className="flex flex-col gap-0.5">
-                        {monitor && events.length > 0 ? (
-                          <button onClick={() => setSignalModal({ monitor, facilityName: dc.name })} className="inline-flex items-center gap-1.5 hover:bg-[#FCDDCF]/30 px-2 py-0.5 rounded-[2px] transition-colors">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#FB631B] animate-pulse" />
-                            <span className="font-mono text-[8px] uppercase tracking-[0.05em] text-[#FB631B]">{events.length}</span>
-                          </button>
-                        ) : <span className="font-mono text-[8px] text-[#E5E5E5]">&mdash;</span>}
-                        {snapshotUpdates[String(originalIndex)] && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#69BE78]/10 rounded-[2px]">
-                            <span className="w-1 h-1 rounded-full bg-[#69BE78]" />
-                            <span className="font-mono text-[8px] uppercase tracking-[0.05em] text-[#69BE78]">
-                              updated {new Date(snapshotUpdates[String(originalIndex)].timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {(monitor && events.length > 0) || snapshotUpdates[String(originalIndex)] ? (
+                        <button
+                          onClick={() => setSignalModal({
+                            monitor: monitor || null,
+                            facilityName: dc.name,
+                            facilityIndex: originalIndex,
+                            snapshot: snapshotUpdates[String(originalIndex)] || null,
+                          })}
+                          className="flex flex-col gap-0.5 hover:bg-[#FCDDCF]/20 px-2 py-0.5 rounded-[2px] transition-colors"
+                        >
+                          {monitor && events.length > 0 && (
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#FB631B] animate-pulse" />
+                              <span className="font-mono text-[8px] uppercase tracking-[0.05em] text-[#FB631B]">
+                                {events.length} region
+                              </span>
                             </span>
-                          </span>
-                        )}
-                      </div>
+                          )}
+                          {snapshotUpdates[String(originalIndex)] && (
+                            <span className="inline-flex items-center gap-1">
+                              <span className="w-1 h-1 rounded-full bg-[#FB631B]" />
+                              <span className="font-mono text-[8px] uppercase tracking-[0.05em] text-[#FB631B]">
+                                row updated
+                              </span>
+                            </span>
+                          )}
+                        </button>
+                      ) : (
+                        <span className="font-mono text-[8px] text-[#E5E5E5]">&mdash;</span>
+                      )}
                     </td>
                     <EC className="max-w-[160px]"><Cell dc={dc} field="verified_operator" value={dc.operator} onClick={openBasis} facilityIndex={originalIndex} className="truncate block" /></EC>
                     <EC className="max-w-[160px]"><Cell dc={dc} field="verified_owner" value={dc.owner} onClick={openBasis} facilityIndex={originalIndex} className="truncate block" /></EC>
@@ -218,20 +237,59 @@ export function DatasetTable({ datacenters, monitors, snapshotUpdates = {} }: Da
         </div>
       )}
 
-      {/* Signal modal */}
+      {/* Monitor details modal */}
       {signalModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center" style={{ backgroundColor: "rgba(29, 27, 22, 0.5)" }}>
-          <div className="bg-white rounded-[8px] border border-[#E5E5E5] shadow-xl w-[560px] max-w-[90vw] max-h-[80vh] overflow-hidden flex flex-col">
+          <div className="bg-white rounded-[8px] border border-[#E5E5E5] shadow-xl w-[600px] max-w-[90vw] max-h-[80vh] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between px-6 py-4 border-b border-[#E5E5E5] shrink-0">
               <div>
-                <div className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#ADADAC] mb-1">Monitor events</div>
-                <div className="text-[16px] font-medium text-[#1D1B16]">{signalModal.monitor.name}</div>
-                <div className="text-[13px] text-[#858483] mt-0.5">{signalModal.monitor.events.length} event{signalModal.monitor.events.length !== 1 ? "s" : ""} &middot; {signalModal.facilityName}</div>
+                <div className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#ADADAC] mb-1">Monitors for facility</div>
+                <div className="text-[16px] font-medium text-[#1D1B16]">{signalModal.facilityName}</div>
               </div>
               <button onClick={() => setSignalModal(null)} className="text-[#ADADAC] hover:text-[#1D1B16] transition-colors p-1"><X className="w-4 h-4" /></button>
             </div>
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
-              {signalModal.monitor.events.map((evt) => <EvtCard key={evt.eventId} event={evt} />)}
+            <div className="flex-1 overflow-y-auto">
+              {/* Snapshot row updates */}
+              {signalModal.snapshot && (
+                <div className="px-6 py-4 border-b border-[#E5E5E5]">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#FB631B] bg-[#FCDDCF] px-1.5 py-0.5 rounded-[2px]">Snapshot</span>
+                    <span className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#1D1B16]">Row-level monitor</span>
+                    <span className="font-mono text-[8px] text-[#ADADAC] ml-auto">{signalModal.snapshot.timestamp}</span>
+                  </div>
+                  <p className="text-[13px] text-[#858483] mb-3">
+                    Hourly snapshot detected changes in {signalModal.snapshot.changedFields.length} field{signalModal.snapshot.changedFields.length !== 1 ? "s" : ""}:
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {signalModal.snapshot.changedFields.map((field) => (
+                      <span key={field} className="font-mono text-[8px] uppercase tracking-[0.05em] text-[#FB631B] border border-[#FCDDCF] bg-[#FCDDCF]/30 px-2 py-0.5 rounded-[2px]">
+                        {field.replace(/_/g, " ")}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Regional monitor events */}
+              {signalModal.monitor && signalModal.monitor.events.length > 0 && (
+                <div className="px-6 py-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="font-mono uppercase text-[8px] tracking-[0.05em] text-white bg-[#5C5B59] px-1.5 py-0.5 rounded-[2px]">Region</span>
+                    <span className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#1D1B16]">{signalModal.monitor.name}</span>
+                    <span className="font-mono text-[8px] text-[#ADADAC] ml-auto">{signalModal.monitor.events.length} event{signalModal.monitor.events.length !== 1 ? "s" : ""}</span>
+                  </div>
+                  <div className="space-y-3">
+                    {signalModal.monitor.events.map((evt) => <EvtCard key={evt.eventId} event={evt} />)}
+                  </div>
+                </div>
+              )}
+
+              {/* Empty state */}
+              {!signalModal.snapshot && (!signalModal.monitor || signalModal.monitor.events.length === 0) && (
+                <div className="px-6 py-12 text-center">
+                  <p className="text-[13px] text-[#ADADAC]">No monitor events for this facility yet.</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
