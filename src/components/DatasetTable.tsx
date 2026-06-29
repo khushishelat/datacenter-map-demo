@@ -32,25 +32,26 @@ export function DatasetTable({ datacenters, monitors }: DatasetTableProps) {
   const [signalModal, setSignalModal] = useState<{ monitor: Monitor; facilityName: string } | null>(null);
   const [basisData, setBasisData] = useState<BasisPanelData | null>(null);
 
-  const openBasis = useCallback((dc: Datacenter, field: string, value: string) => {
+  const openBasis = useCallback((dc: Datacenter, field: string, value: string, facilityIndex: number) => {
     const e = dc.enrichment;
     if (!e) return;
     setBasisData({
       field,
       value: value || "Not found",
       facilityName: dc.name,
+      facilityIndex,
       citations: e.citations || [],
       reasoning: e.reasoning?.[field],
     });
   }, []);
 
   const enrichedRows = useMemo(() => {
-    return datacenters.map((dc) => {
+    return datacenters.map((dc, originalIndex) => {
       const monitor = getMonitorForDc(dc, monitors);
       const events = monitor?.events || [];
       const newestEvent = events.length > 0
         ? events.reduce((a, b) => new Date(b.eventDate) > new Date(a.eventDate) ? b : a) : null;
-      return { dc, monitor, events, newestEvent };
+      return { dc, monitor, events, newestEvent, originalIndex };
     });
   }, [datacenters, monitors]);
 
@@ -125,7 +126,7 @@ export function DatasetTable({ datacenters, monitors }: DatasetTableProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#F6F6F6]">
-              {pageData.map(({ dc, monitor, events }, i) => {
+              {pageData.map(({ dc, monitor, events, originalIndex }, i) => {
                 const display = toDisplayStatus(dc.status);
                 const e = dc.enrichment;
                 const update = e?.recent_news || e?.construction_update || "";
@@ -134,7 +135,7 @@ export function DatasetTable({ datacenters, monitors }: DatasetTableProps) {
                   <tr key={`${dc.lat}-${dc.lng}-${i}`} className="hover:bg-[#F9F8F4] transition-colors">
                     {/* Facility — sticky left */}
                     <td className="px-4 py-2 font-medium text-[#1D1B16] max-w-[240px] sticky left-0 bg-white group-hover:bg-[#F9F8F4] z-[5] border-r border-[#E5E5E5]">
-                      <Cell dc={dc} field="verified_name" value={dc.name} onClick={openBasis} className="truncate block font-medium text-[#1D1B16]" />
+                      <Cell dc={dc} field="verified_name" value={dc.name} onClick={openBasis} facilityIndex={originalIndex} className="truncate block font-medium text-[#1D1B16]" />
                     </td>
                     {/* Monitors */}
                     <td className="px-4 py-2 whitespace-nowrap">
@@ -145,39 +146,39 @@ export function DatasetTable({ datacenters, monitors }: DatasetTableProps) {
                         </button>
                       ) : <span className="font-mono text-[8px] text-[#E5E5E5]">&mdash;</span>}
                     </td>
-                    <EC className="max-w-[160px]"><Cell dc={dc} field="verified_operator" value={dc.operator} onClick={openBasis} className="truncate block" /></EC>
-                    <EC className="max-w-[160px]"><Cell dc={dc} field="verified_owner" value={dc.owner} onClick={openBasis} className="truncate block" /></EC>
+                    <EC className="max-w-[160px]"><Cell dc={dc} field="verified_operator" value={dc.operator} onClick={openBasis} facilityIndex={originalIndex} className="truncate block" /></EC>
+                    <EC className="max-w-[160px]"><Cell dc={dc} field="verified_owner" value={dc.owner} onClick={openBasis} facilityIndex={originalIndex} className="truncate block" /></EC>
                     <td className="px-4 py-2 text-[#5C5B59] whitespace-nowrap">{dc.state}</td>
                     <EC>
-                      <Cell dc={dc} field="verified_status" value={STATUS_LABELS[display]} onClick={openBasis} displayValue={<StatusBadge status={display} />} />
+                      <Cell dc={dc} field="verified_status" value={STATUS_LABELS[display]} onClick={openBasis} facilityIndex={originalIndex} displayValue={<StatusBadge status={display} />} />
                     </EC>
                     <td className="px-4 py-2 text-[#5C5B59] capitalize whitespace-nowrap">{dc.type}</td>
                     <EC className="text-right font-mono tabular-nums whitespace-nowrap">
-                      <Cell dc={dc} field="power_capacity_mw" value={dc.powerMw > 0 ? formatPower(dc.powerMw) : ""} onClick={openBasis} />
+                      <Cell dc={dc} field="power_capacity_mw" value={dc.powerMw > 0 ? formatPower(dc.powerMw) : ""} onClick={openBasis} facilityIndex={originalIndex} />
                     </EC>
                     <EC className="text-right font-mono tabular-nums whitespace-nowrap">
-                      <Cell dc={dc} field="total_sqft" value={dc.sqft > 0 ? formatSqft(dc.sqft) : ""} onClick={openBasis} />
+                      <Cell dc={dc} field="total_sqft" value={dc.sqft > 0 ? formatSqft(dc.sqft) : ""} onClick={openBasis} facilityIndex={originalIndex} />
                     </EC>
                     <EC className="text-right font-mono tabular-nums whitespace-nowrap">
-                      <Cell dc={dc} field="year_online" value={dc.yearOnline !== "unknown" ? dc.yearOnline : ""} onClick={openBasis} />
+                      <Cell dc={dc} field="year_online" value={dc.yearOnline !== "unknown" ? dc.yearOnline : ""} onClick={openBasis} facilityIndex={originalIndex} />
                     </EC>
                     <EC className="max-w-[200px]">
-                      <Cell dc={dc} field="description" value={e?.description || ""} onClick={openBasis} className="truncate block" truncate={60} />
+                      <Cell dc={dc} field="description" value={e?.description || ""} onClick={openBasis} facilityIndex={originalIndex} className="truncate block" truncate={60} />
                     </EC>
                     <EC className="max-w-[140px]">
-                      <Cell dc={dc} field="notable_tenants" value={e?.notable_tenants || ""} onClick={openBasis} className="truncate block" />
+                      <Cell dc={dc} field="notable_tenants" value={e?.notable_tenants || ""} onClick={openBasis} facilityIndex={originalIndex} className="truncate block" />
                     </EC>
                     <EC className="max-w-[180px]">
-                      <Cell dc={dc} field={e?.recent_news ? "recent_news" : "construction_update"} value={update} onClick={openBasis} className="truncate block" truncate={50} />
+                      <Cell dc={dc} field={e?.recent_news ? "recent_news" : "construction_update"} value={update} onClick={openBasis} facilityIndex={originalIndex} className="truncate block" truncate={50} />
                     </EC>
-                    <EC className="max-w-[140px]"><Cell dc={dc} field="utility_provider" value={e?.utility_provider || ""} onClick={openBasis} className="truncate block" /></EC>
-                    <EC><Cell dc={dc} field="cooling_type" value={e?.cooling_type && e.cooling_type !== "unknown" ? e.cooling_type : ""} onClick={openBasis} /></EC>
-                    <EC className="max-w-[100px]"><Cell dc={dc} field="tier_level" value={e?.tier_level || ""} onClick={openBasis} className="truncate block" /></EC>
-                    <EC className="max-w-[160px]"><Cell dc={dc} field="fiber_providers" value={e?.fiber_providers || ""} onClick={openBasis} className="truncate block" /></EC>
-                    <EC className="text-right font-mono tabular-nums"><Cell dc={dc} field="num_buildings" value={e?.num_buildings && e.num_buildings > 0 ? String(e.num_buildings) : ""} onClick={openBasis} /></EC>
-                    <EC className="text-right font-mono tabular-nums"><Cell dc={dc} field="campus_acres" value={e?.campus_acres && e.campus_acres > 0 ? String(e.campus_acres) : ""} onClick={openBasis} /></EC>
-                    <EC className="max-w-[160px]"><Cell dc={dc} field="natural_hazard_zone" value={e?.natural_hazard_zone || ""} onClick={openBasis} className="truncate block" /></EC>
-                    <EC className="max-w-[180px]"><Cell dc={dc} field="tax_incentives" value={e?.tax_incentives || ""} onClick={openBasis} className="truncate block" /></EC>
+                    <EC className="max-w-[140px]"><Cell dc={dc} field="utility_provider" value={e?.utility_provider || ""} onClick={openBasis} facilityIndex={originalIndex} className="truncate block" /></EC>
+                    <EC><Cell dc={dc} field="cooling_type" value={e?.cooling_type && e.cooling_type !== "unknown" ? e.cooling_type : ""} onClick={openBasis} facilityIndex={originalIndex} /></EC>
+                    <EC className="max-w-[100px]"><Cell dc={dc} field="tier_level" value={e?.tier_level || ""} onClick={openBasis} facilityIndex={originalIndex} className="truncate block" /></EC>
+                    <EC className="max-w-[160px]"><Cell dc={dc} field="fiber_providers" value={e?.fiber_providers || ""} onClick={openBasis} facilityIndex={originalIndex} className="truncate block" /></EC>
+                    <EC className="text-right font-mono tabular-nums"><Cell dc={dc} field="num_buildings" value={e?.num_buildings && e.num_buildings > 0 ? String(e.num_buildings) : ""} onClick={openBasis} facilityIndex={originalIndex} /></EC>
+                    <EC className="text-right font-mono tabular-nums"><Cell dc={dc} field="campus_acres" value={e?.campus_acres && e.campus_acres > 0 ? String(e.campus_acres) : ""} onClick={openBasis} facilityIndex={originalIndex} /></EC>
+                    <EC className="max-w-[160px]"><Cell dc={dc} field="natural_hazard_zone" value={e?.natural_hazard_zone || ""} onClick={openBasis} facilityIndex={originalIndex} className="truncate block" /></EC>
+                    <EC className="max-w-[180px]"><Cell dc={dc} field="tax_incentives" value={e?.tax_incentives || ""} onClick={openBasis} facilityIndex={originalIndex} className="truncate block" /></EC>
                   </tr>
                 );
               })}
@@ -228,9 +229,9 @@ export function DatasetTable({ datacenters, monitors }: DatasetTableProps) {
 }
 
 /** Clickable enriched cell */
-function Cell({ dc, field, value, onClick, className, displayValue, truncate: trunc }: {
-  dc: Datacenter; field: string; value: string; onClick: (dc: Datacenter, field: string, value: string) => void;
-  className?: string; displayValue?: React.ReactNode; truncate?: number;
+function Cell({ dc, field, value, onClick, className, displayValue, truncate: trunc, facilityIndex }: {
+  dc: Datacenter; field: string; value: string; onClick: (dc: Datacenter, field: string, value: string, idx: number) => void;
+  className?: string; displayValue?: React.ReactNode; truncate?: number; facilityIndex: number;
 }) {
   const e = dc.enrichment;
   const isEmpty = !value || value === "0" || value === "unknown";
@@ -240,7 +241,7 @@ function Cell({ dc, field, value, onClick, className, displayValue, truncate: tr
 
   return (
     <button
-      onClick={(ev) => { ev.stopPropagation(); onClick(dc, field, value); }}
+      onClick={(ev) => { ev.stopPropagation(); onClick(dc, field, value, facilityIndex); }}
       className={clsx("text-left w-full group cursor-pointer", className)}
     >
       <span className="flex items-center gap-1">
