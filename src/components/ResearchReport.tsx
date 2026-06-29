@@ -9,6 +9,8 @@ interface ResearchReportProps {
   event: MonitorDetection;
   monitor: Monitor;
   onClose: () => void;
+  existingState?: { status: "running" | "completed"; content?: string; runId?: string };
+  onStatusChange?: (eventId: string, status: "running" | "completed", content?: string, runId?: string) => void;
 }
 
 interface StreamMessage {
@@ -18,9 +20,11 @@ interface StreamMessage {
   timestamp?: string;
 }
 
-export function ResearchReport({ event, monitor, onClose }: ResearchReportProps) {
-  const [status, setStatus] = useState<"idle" | "running" | "completed" | "error">("idle");
-  const [content, setContent] = useState("");
+export function ResearchReport({ event, monitor, onClose, existingState, onStatusChange }: ResearchReportProps) {
+  const [status, setStatus] = useState<"idle" | "running" | "completed" | "error">(
+    existingState?.status || "idle"
+  );
+  const [content, setContent] = useState(existingState?.content || "");
   const [messages, setMessages] = useState<StreamMessage[]>([]);
   const [stats, setStats] = useState<{ considered: number; read: number; progress: number }>({ considered: 0, read: 0, progress: 0 });
   const [runId, setRunId] = useState("");
@@ -42,6 +46,7 @@ export function ResearchReport({ event, monitor, onClose }: ResearchReportProps)
           setContent(data.content);
           setStatus("completed");
           setRunId(data.runId || "");
+          onStatusChange?.(eid, "completed", data.content, data.runId);
           clearInterval(pollRef.current);
         } else if (data.status === "failed") {
           setStatus("error");
@@ -53,24 +58,12 @@ export function ResearchReport({ event, monitor, onClose }: ResearchReportProps)
     setTimeout(() => { if (pollRef.current) clearInterval(pollRef.current); }, 300000);
   }, []);
 
-  // On mount: check if report already exists or is in progress
+  // If existing state says running, start polling for completion
   useEffect(() => {
-    async function checkExisting() {
-      try {
-        const res = await fetch(`/api/research?eventId=${encodeURIComponent(event.eventId)}`);
-        const data = await res.json();
-        if (data.content) {
-          setContent(data.content);
-          setRunId(data.runId || "");
-          setStatus("completed");
-        } else if (data.status === "running" && data.runId) {
-          setRunId(data.runId);
-          setStatus("running");
-          startPolling(event.eventId);
-        }
-      } catch {}
+    if (existingState?.status === "running" && existingState.runId) {
+      setRunId(existingState.runId);
+      startPolling(event.eventId);
     }
-    checkExisting();
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [event.eventId, startPolling]);
 
@@ -97,10 +90,12 @@ export function ResearchReport({ event, monitor, onClose }: ResearchReportProps)
       setContent(data.content);
       setRunId(data.runId || "");
       setStatus("completed");
+      onStatusChange?.(event.eventId, "completed", data.content, data.runId);
       return;
     }
 
     if (data.runId) {
+      onStatusChange?.(event.eventId, "running", undefined, data.runId);
       setRunId(data.runId);
 
       // Connect to SSE

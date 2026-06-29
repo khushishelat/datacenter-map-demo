@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import clsx from "clsx";
 import { ExternalLink, FileText } from "lucide-react";
 import type { Monitor, MonitorDetection } from "@/lib/types";
@@ -27,11 +27,15 @@ export function MonitorPanel({
 }: MonitorPanelProps) {
   const [classFilter, setClassFilter] = useState<ClassFilter>("all");
   const [reportTarget, setReportTarget] = useState<{ event: MonitorDetection; monitor: Monitor } | null>(null);
-  const [generatingReports, setGeneratingReports] = useState<Set<string>>(new Set());
+  // Track report state per eventId on the CLIENT side
+  const [reportStates, setReportStates] = useState<Record<string, { status: "running" | "completed"; content?: string; runId?: string }>>({});
 
   function handleOpenReport(event: MonitorDetection, monitor: Monitor) {
-    setGeneratingReports((prev) => new Set(prev).add(event.eventId));
     setReportTarget({ event, monitor });
+  }
+
+  function handleReportStatusChange(eventId: string, status: "running" | "completed", content?: string, runId?: string) {
+    setReportStates((prev) => ({ ...prev, [eventId]: { status, content, runId } }));
   }
 
   const filtered =
@@ -63,6 +67,31 @@ export function MonitorPanel({
     () => allEvents.filter((e) => e.event.severity === "critical"),
     [allEvents]
   );
+
+  // Auto-generate reports for critical events
+  const autoTriggered = useRef(new Set<string>());
+  useEffect(() => {
+    for (const { event, monitor } of criticalEvents) {
+      if (autoTriggered.current.has(event.eventId)) continue;
+      if (reportStates[event.eventId]) continue;
+      autoTriggered.current.add(event.eventId);
+      // Fire and forget
+      fetch("/api/research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          eventId: event.eventId,
+          headline: event.headline,
+          summary: event.summary,
+          monitorName: monitor.name,
+        }),
+      }).then((r) => r.json()).then((data) => {
+        if (data.runId) {
+          handleReportStatusChange(event.eventId, "running", undefined, data.runId);
+        }
+      }).catch(() => {});
+    }
+  }, [criticalEvents, reportStates]);
 
   const classCounts: Record<ClassFilter, number> = {
     all: monitors.length,
@@ -124,7 +153,7 @@ export function MonitorPanel({
                   event={event}
                   monitor={monitor}
                   onGenerateReport={() => handleOpenReport(event, monitor)}
-                  isGenerating={generatingReports.has(event.eventId)}
+                  reportState={reportStates[event.eventId]}
                 />
               ))}
             </div>
@@ -143,7 +172,7 @@ export function MonitorPanel({
                   event={event}
                   monitor={monitor}
                   onGenerateReport={() => handleOpenReport(event, monitor)}
-                  isGenerating={generatingReports.has(event.eventId)}
+                  reportState={reportStates[event.eventId]}
                   showReportButton
                 />
               ))}
@@ -175,6 +204,8 @@ export function MonitorPanel({
           event={reportTarget.event}
           monitor={reportTarget.monitor}
           onClose={() => setReportTarget(null)}
+          existingState={reportStates[reportTarget.event.eventId]}
+          onStatusChange={handleReportStatusChange}
         />
       )}
     </div>
@@ -186,13 +217,13 @@ function FeedEventCard({
   monitor,
   onGenerateReport,
   showReportButton,
-  isGenerating,
+  reportState,
 }: {
   event: MonitorDetection;
   monitor: Monitor;
   onGenerateReport: () => void;
   showReportButton?: boolean;
-  isGenerating?: boolean;
+  reportState?: { status: "running" | "completed"; content?: string };
 }) {
   const catLabel = MONITOR_CATEGORY_LABELS[event.category] || event.category;
   const catColor = MONITOR_CATEGORY_COLORS[event.category] || "#858483";
@@ -245,15 +276,17 @@ function FeedEventCard({
           onClick={onGenerateReport}
           className={clsx(
             "inline-flex items-center gap-1 font-mono text-[8px] uppercase tracking-[0.02em] border rounded-[2px] px-2 py-1 transition-colors",
-            isGenerating
-              ? "text-[#FB631B] border-[#FB631B] bg-[#FCDDCF]/30 animate-pulse"
-              : showReportButton
-                ? "text-[#FB631B] border-[#FB631B] bg-[#FCDDCF]/30 hover:bg-[#FCDDCF]"
-                : "text-[#ADADAC] border-[#E5E5E5] hover:border-[#FB631B] hover:text-[#FB631B]"
+            reportState?.status === "completed"
+              ? "text-[#69BE78] border-[#69BE78] bg-[#69BE78]/10 hover:bg-[#69BE78]/20"
+              : reportState?.status === "running"
+                ? "text-[#FB631B] border-[#FB631B] bg-[#FCDDCF]/30 animate-pulse"
+                : showReportButton
+                  ? "text-[#FB631B] border-[#FB631B] bg-[#FCDDCF]/30 hover:bg-[#FCDDCF]"
+                  : "text-[#ADADAC] border-[#E5E5E5] hover:border-[#FB631B] hover:text-[#FB631B]"
           )}
         >
           <FileText className="w-2.5 h-2.5" />
-          {isGenerating ? "Report generating..." : "Generate report"}
+          {reportState?.status === "completed" ? "View report" : reportState?.status === "running" ? "Report generating..." : "Generate report"}
         </button>
       </div>
     </div>
