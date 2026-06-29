@@ -64,15 +64,18 @@ export async function GET(request: NextRequest) {
 
   if (!eventId) return NextResponse.json({ error: "Missing eventId" }, { status: 400 });
 
+  // Accept runId from client (serverless cache is ephemeral)
+  const clientRunId = request.nextUrl.searchParams.get("runId");
   const cached = reportCache[eventId];
-  if (!cached) return NextResponse.json({ status: "not_started" });
-  if (cached.content) return NextResponse.json(cached);
 
-  if (!cached.runId) return NextResponse.json(cached);
+  if (cached?.content) return NextResponse.json(cached);
+
+  const activeRunId = cached?.runId || clientRunId;
+  if (!activeRunId) return NextResponse.json({ status: "not_started" });
 
   // Stream mode: proxy SSE from Parallel API
   if (stream && API_KEY) {
-    const sseRes = await fetch(`${BASE_URL}/v1/tasks/runs/${cached.runId}/events`, {
+    const sseRes = await fetch(`${BASE_URL}/v1/tasks/runs/${activeRunId}/events`, {
       headers: { "x-api-key": API_KEY },
     });
 
@@ -97,13 +100,13 @@ export async function GET(request: NextRequest) {
             if (chunk.includes('"completed"') || chunk.includes('"failed"')) {
               // Fetch final result
               try {
-                const resultRes = await fetch(`${BASE_URL}/v1/tasks/runs/${cached.runId}/result`, {
+                const resultRes = await fetch(`${BASE_URL}/v1/tasks/runs/${activeRunId}/result`, {
                   headers: { "x-api-key": API_KEY },
                 });
                 if (resultRes.ok) {
                   const result = await resultRes.json();
                   const content = result.output?.content || "";
-                  reportCache[eventId] = { status: "completed", content, runId: cached.runId };
+                  reportCache[eventId] = { status: "completed", content, runId: activeRunId };
                   controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "report.complete", content })}\n\n`));
                 }
               } catch {}
@@ -127,23 +130,23 @@ export async function GET(request: NextRequest) {
 
   // Non-stream: poll for result
   try {
-    const statusRes = await fetch(`${BASE_URL}/v1/tasks/runs/${cached.runId}`, {
+    const statusRes = await fetch(`${BASE_URL}/v1/tasks/runs/${activeRunId}`, {
       headers: { "x-api-key": API_KEY },
     });
     if (statusRes.ok) {
       const statusData = await statusRes.json();
       if (statusData.status === "completed") {
-        const resultRes = await fetch(`${BASE_URL}/v1/tasks/runs/${cached.runId}/result`, {
+        const resultRes = await fetch(`${BASE_URL}/v1/tasks/runs/${activeRunId}/result`, {
           headers: { "x-api-key": API_KEY },
         });
         if (resultRes.ok) {
           const result = await resultRes.json();
           const content = result.output?.content || "";
-          reportCache[eventId] = { status: "completed", content, runId: cached.runId };
+          reportCache[eventId] = { status: "completed", content, runId: activeRunId };
           return NextResponse.json(reportCache[eventId]);
         }
       }
-      return NextResponse.json({ status: statusData.status, runId: cached.runId });
+      return NextResponse.json({ status: statusData.status, runId: activeRunId });
     }
   } catch {}
 

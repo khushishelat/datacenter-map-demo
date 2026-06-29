@@ -36,16 +36,18 @@ export function ResearchReport({ event, monitor, onClose, existingState, onStatu
     if (streamRef.current) streamRef.current.scrollTop = streamRef.current.scrollHeight;
   }, [messages, content]);
 
-  const startPolling = useCallback((eid: string) => {
+  const startPolling = useCallback((eid: string, rid?: string) => {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
       try {
-        const res = await fetch(`/api/research?eventId=${encodeURIComponent(eid)}`);
+        const params = new URLSearchParams({ eventId: eid });
+        if (rid) params.set("runId", rid);
+        const res = await fetch(`/api/research?${params}`);
         const data = await res.json();
         if (data.content) {
           setContent(data.content);
           setStatus("completed");
-          setRunId(data.runId || "");
+          setRunId(data.runId || rid || "");
           onStatusChange?.(eid, "completed", data.content, data.runId);
           clearInterval(pollRef.current);
         } else if (data.status === "failed") {
@@ -54,15 +56,14 @@ export function ResearchReport({ event, monitor, onClose, existingState, onStatu
         }
       } catch {}
     }, 3000);
-    // Timeout after 5 min
     setTimeout(() => { if (pollRef.current) clearInterval(pollRef.current); }, 300000);
-  }, []);
+  }, [onStatusChange]);
 
   // If existing state says running, start polling for completion
   useEffect(() => {
     if (existingState?.status === "running" && existingState.runId) {
       setRunId(existingState.runId);
-      startPolling(event.eventId);
+      startPolling(event.eventId, existingState.runId);
     }
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [event.eventId, startPolling]);
@@ -153,7 +154,7 @@ export function ResearchReport({ event, monitor, onClose, existingState, onStatu
               progress: d.progress_meter || 0,
             });
           } else if (d.type === "task_run.state" && d.run?.status === "completed") {
-            startPolling(event.eventId);
+            startPolling(event.eventId, data.runId);
             es.close();
           }
         } catch {}
@@ -161,7 +162,7 @@ export function ResearchReport({ event, monitor, onClose, existingState, onStatu
 
       es.onerror = () => {
         es.close();
-        startPolling(event.eventId);
+        startPolling(event.eventId, data.runId);
       };
     }
   }
