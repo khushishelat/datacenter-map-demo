@@ -163,7 +163,7 @@ export function DatasetTable({ datacenters, monitors, snapshotUpdates = {} }: Da
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-[#FB631B] animate-pulse" />
                             <span className="font-mono text-[8px] uppercase tracking-[0.05em] text-[#FB631B]">
-                              {totalCount} Data updated
+                              {totalCount}
                             </span>
                           </button>
                         );
