@@ -277,19 +277,23 @@ function ReportContent({ content }: { content: string }) {
 
   return (
     <div className="flex h-full overflow-hidden">
-      {/* TOC sidebar — sticky */}
+      {/* TOC sidebar — fixed in place, scrolls independently */}
       {headings.length > 2 && (
-        <div className="w-[200px] shrink-0 border-r border-[#E5E5E5] overflow-y-auto py-4 px-4 sticky top-0 self-start h-full">
-          <div className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#ADADAC] mb-3">
+        <div className="w-[180px] shrink-0 border-r border-[#E5E5E5] overflow-y-auto py-3 px-3 bg-[#F9F8F4]">
+          <div className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#ADADAC] mb-2">
             Contents
           </div>
-          <nav className="space-y-1">
+          <nav className="space-y-0.5">
             {headings.map((h, i) => (
               <a
                 key={i}
                 href={`#report-${h.id}`}
-                className={`block text-[11px] leading-[16px] text-[#858483] hover:text-[#FB631B] transition-colors truncate ${
-                  h.level === 1 ? "font-medium text-[#1D1B16]" : h.level === 2 ? "pl-2" : "pl-4 text-[#ADADAC]"
+                onClick={(e) => {
+                  e.preventDefault();
+                  document.getElementById(`report-${h.id}`)?.scrollIntoView({ behavior: "smooth" });
+                }}
+                className={`block text-[10px] leading-[14px] text-[#858483] hover:text-[#FB631B] transition-colors ${
+                  h.level === 1 ? "font-medium text-[#1D1B16] mt-1.5" : h.level === 2 ? "pl-2" : "pl-3 text-[#ADADAC]"
                 }`}
               >
                 {h.text}
@@ -298,9 +302,9 @@ function ReportContent({ content }: { content: string }) {
           </nav>
         </div>
       )}
-      {/* Report body */}
-      <div className="flex-1 overflow-y-auto px-6 py-4">
-        <div className="max-w-none" dangerouslySetInnerHTML={{ __html: markdownToHtml(content) }} />
+      {/* Report body — tighter, more report-like */}
+      <div className="flex-1 overflow-y-auto px-8 py-5">
+        <div className="max-w-[640px]" dangerouslySetInnerHTML={{ __html: markdownToHtml(content) }} />
       </div>
     </div>
   );
@@ -323,7 +327,7 @@ function markdownToHtml(md: string): string {
       const isSep = (r: string) => /^\|[\s-:|]+\|$/.test(r);
       const hasSep = rows.length >= 2 && isSep(rows[1]);
 
-      let out = '<div class="overflow-x-auto my-3"><table class="w-full text-[12px] border border-[#E5E5E5] rounded-[4px]">';
+      let out = '<div class="overflow-x-auto my-2"><table class="w-full text-[11px] border border-[#E5E5E5] rounded-[4px]">';
 
       rows.forEach((row, i) => {
         if (hasSep && i === 1) return; // skip separator row
@@ -331,8 +335,8 @@ function markdownToHtml(md: string): string {
         const isHeader = hasSep && i === 0;
         const tag = isHeader ? "th" : "td";
         const cellClass = isHeader
-          ? 'class="px-3 py-2 text-left font-mono uppercase text-[8px] tracking-[0.05em] text-[#858483] bg-[#F6F6F6] border-b border-[#E5E5E5]"'
-          : 'class="px-3 py-2 text-[#5C5B59] border-b border-[#F6F6F6]"';
+          ? 'class="px-2 py-1.5 text-left font-mono uppercase text-[8px] tracking-[0.05em] text-[#858483] bg-[#F6F6F6] border-b border-[#E5E5E5]"'
+          : 'class="px-2 py-1.5 text-[11px] text-[#5C5B59] border-b border-[#F6F6F6]"';
         out += "<tr>" + cells.map((c) => `<${tag} ${cellClass}>${c}</${tag}>`).join("") + "</tr>";
       });
 
@@ -341,18 +345,18 @@ function markdownToHtml(md: string): string {
     }
   );
 
-  // Headers with IDs for TOC
+  // Headers with IDs for TOC — tighter spacing
   html = html.replace(/^### (.+)$/gm, (_, t) => {
     const id = t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    return `<h3 id="report-${id}" class="text-[14px] font-medium text-[#1D1B16] mt-5 mb-1.5">${t}</h3>`;
+    return `<h3 id="report-${id}" class="text-[13px] font-medium text-[#1D1B16] mt-3 mb-1">${t}</h3>`;
   });
   html = html.replace(/^## (.+)$/gm, (_, t) => {
     const id = t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    return `<h2 id="report-${id}" class="text-[15px] font-medium text-[#1D1B16] mt-6 mb-2 pb-1 border-b border-[#E5E5E5]">${t}</h2>`;
+    return `<h2 id="report-${id}" class="text-[14px] font-medium text-[#1D1B16] mt-4 mb-1 pb-0.5 border-b border-[#E5E5E5]">${t}</h2>`;
   });
   html = html.replace(/^# (.+)$/gm, (_, t) => {
     const id = t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    return `<h1 id="report-${id}" class="text-[16px] font-medium text-[#1D1B16] mt-6 mb-2 pb-1 border-b border-[#E5E5E5]">${t}</h1>`;
+    return `<h1 id="report-${id}" class="text-[15px] font-medium text-[#1D1B16] mt-4 mb-1 pb-0.5 border-b border-[#E5E5E5]">${t}</h1>`;
   });
 
   // Bold
@@ -362,15 +366,15 @@ function markdownToHtml(md: string): string {
   html = html.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-[#FB631B] hover:underline">$1</a>');
 
   // Bullet lists
-  html = html.replace(/^- (.+)$/gm, '<li class="text-[13px] text-[#5C5B59] ml-4 list-disc mb-1">$1</li>');
+  html = html.replace(/^- (.+)$/gm, '<li class="text-[12px] text-[#5C5B59] ml-4 list-disc leading-[18px]">$1</li>');
 
   // Numbered lists
-  html = html.replace(/^\d+\. (.+)$/gm, '<li class="text-[13px] text-[#5C5B59] ml-4 list-decimal mb-1">$1</li>');
+  html = html.replace(/^\d+\. (.+)$/gm, '<li class="text-[12px] text-[#5C5B59] ml-4 list-decimal leading-[18px]">$1</li>');
 
-  // Paragraphs
-  html = html.replace(/\n\n/g, '</p><p class="text-[13px] text-[#5C5B59] leading-[20px] mb-2">');
+  // Paragraphs — tighter
+  html = html.replace(/\n\n/g, '</p><p class="text-[12px] text-[#5C5B59] leading-[18px] mb-1.5">');
   html = html.replace(/\n/g, "<br/>");
-  html = '<p class="text-[13px] text-[#5C5B59] leading-[20px] mb-2">' + html + "</p>";
+  html = '<p class="text-[12px] text-[#5C5B59] leading-[18px] mb-1.5">' + html + "</p>";
 
   return html;
 }
