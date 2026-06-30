@@ -242,25 +242,27 @@ export function MonitorPanel({
               <span className="flex items-center gap-[5px]"><span className="w-2 h-2 bg-[#FB631B] rounded-[1px]" /><span className="font-mono text-[8.5px] text-[#858483]">All events</span></span>
               <span className="flex items-center gap-[5px]"><span className="w-2 h-2 bg-[#E14942] rounded-[1px]" /><span className="font-mono text-[8.5px] text-[#858483]">Critical</span></span>
             </div>
-            <span className="font-mono text-[9px] text-[#A6A5A4]">Click to filter ↓</span>
+            <span className="font-mono text-[9px] text-[#A6A5A4]">Click a bar to filter ↓</span>
           </div>
         </div>
 
-        {/* Active filters */}
+        {/* Active filter */}
         {filterBucket && (
           <div className="flex items-center gap-[7px] flex-wrap px-[18px] py-[11px] border-b border-[#E5E5E5] bg-[#FCFBFA]">
-            <span className="font-mono uppercase text-[8px] tracking-[0.06em] text-[#A6A5A4]">Filters</span>
+            <span className="font-mono uppercase text-[8px] tracking-[0.06em] text-[#A6A5A4]">Filtered to</span>
             <span className="inline-flex items-center gap-[5px] font-mono text-[10px] text-[#FB631B] border border-[#FB631B] rounded-[2px] px-2 py-[4px] cursor-pointer whitespace-nowrap" onClick={() => setFilterBucket(null)}>
               {filterLabel} <span className="text-[12px] leading-[1]">×</span>
             </span>
-            <span className="font-mono text-[9px] text-[#A6A5A4] ml-auto">{filteredEvents.length} events</span>
+            <span className="font-mono text-[9px] text-[#A6A5A4] ml-auto">{filteredEvents.length} event{filteredEvents.length !== 1 ? "s" : ""}</span>
           </div>
         )}
 
-        {/* Filtered feed */}
+        {/* Feed section label */}
         <div className="px-[18px] py-[11px] pb-[7px]">
           <span className="font-mono uppercase text-[10.4px] tracking-[0.06em] text-[#A6A5A4]">
-            {filterLabel || "All events"} &middot; recent
+            {filterBucket
+              ? `${filterLabel} · ${filteredEvents.length} event${filteredEvents.length !== 1 ? "s" : ""}`
+              : `All events · newest first`}
           </span>
         </div>
         {filteredEvents.slice(0, 20).map(({ event, monitor }) => {
@@ -290,7 +292,7 @@ export function MonitorPanel({
                 )}
                 {/* Citations + actions */}
                 <div className="flex items-center gap-[6px] flex-wrap">
-                  {validCitations.slice(0, 2).map((cite, ci) => (
+                  {validCitations.map((cite, ci) => (
                     <a key={ci} href={cite.url} target="_blank" rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 font-mono text-[8px] uppercase tracking-[0.02em] text-[#858483] border border-[#E5E5E5] rounded-[2px] px-2 py-1 hover:border-[#FB631B] hover:text-[#FB631B] transition-colors">
                       {cite.title && cite.title.length > 30 ? cite.title.slice(0, 30) + "..." : cite.title || "Source"}
