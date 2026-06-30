@@ -263,44 +263,67 @@ export function MonitorPanel({
             {filterLabel || "All events"} &middot; recent
           </span>
         </div>
-        {filteredEvents.slice(0, 20).map(({ event, monitor }) => (
-          <div key={event.eventId} className="flex gap-[10px] px-[18px] py-[11px] border-t border-[#E5E5E5] hover:bg-[#FAF8F4] transition-colors cursor-pointer">
-            {/* Severity bar */}
-            <span className="w-[3px] self-stretch rounded-[2px]" style={{ background: SEVERITY_COLORS[event.severity] || "#858483" }} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between gap-2 mb-[4px]">
-                <span className="font-mono uppercase text-[9px] tracking-[0.04em] text-[#A6A5A4]">{monitor.name}</span>
-                <span className="font-mono text-[9px] text-[#A6A5A4]">{event.eventDate}</span>
+        {filteredEvents.slice(0, 20).map(({ event, monitor }) => {
+          const validCitations = event.citations.filter((c) => c.url?.startsWith("http"));
+          return (
+            <div key={event.eventId} className="flex gap-[10px] px-[18px] py-[11px] border-t border-[#E5E5E5] hover:bg-[#FAF8F4] transition-colors">
+              {/* Severity bar */}
+              <span className="w-[3px] self-stretch rounded-[2px]" style={{ background: SEVERITY_COLORS[event.severity] || "#858483" }} />
+              <div className="flex-1 min-w-0">
+                {/* Header: monitor + category + date */}
+                <div className="flex items-center justify-between gap-2 mb-[4px]">
+                  <div className="flex items-center gap-[7px]">
+                    <span className="font-mono uppercase text-[8px] tracking-[0.05em] font-medium px-[5px] py-[2px] rounded-[2px] text-white" style={{ background: MONITOR_CATEGORY_COLORS[event.category] || "#858483" }}>
+                      {MONITOR_CATEGORY_LABELS[event.category] || event.category}
+                    </span>
+                    <span className="font-mono uppercase text-[9px] tracking-[0.04em] text-[#A6A5A4]">{monitor.name}</span>
+                  </div>
+                  <span className="font-mono text-[9px] text-[#A6A5A4] shrink-0">{event.eventDate}</span>
+                </div>
+                {/* Headline */}
+                <div className="text-[13px] font-medium leading-[17px] text-[#181818] mb-[4px]">{event.headline}</div>
+                {/* Summary */}
+                <p className="text-[13px] text-[#5C5B59] leading-[19px] mb-[6px]">{event.summary}</p>
+                {/* Affected entities */}
+                {event.affectedEntities && (
+                  <p className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#A6A5A4] mb-[6px]">Affects: {event.affectedEntities}</p>
+                )}
+                {/* Citations + actions */}
+                <div className="flex items-center gap-[6px] flex-wrap">
+                  {validCitations.slice(0, 2).map((cite, ci) => (
+                    <a key={ci} href={cite.url} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 font-mono text-[8px] uppercase tracking-[0.02em] text-[#858483] border border-[#E5E5E5] rounded-[2px] px-2 py-1 hover:border-[#FB631B] hover:text-[#FB631B] transition-colors">
+                      {cite.title && cite.title.length > 30 ? cite.title.slice(0, 30) + "..." : cite.title || "Source"}
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  ))}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleOpenReport(event, monitor); }}
+                    className={clsx(
+                      "inline-flex items-center gap-1 font-mono text-[8px] uppercase tracking-[0.02em] border rounded-[2px] px-2 py-1 transition-colors",
+                      reportStates[event.eventId]?.status === "completed"
+                        ? "text-[#1F8A5B] border-[#1F8A5B] bg-[#1F8A5B]/10"
+                        : reportStates[event.eventId]?.status === "running"
+                          ? "text-[#FB631B] border-[#FB631B] bg-[#FCDDCF]/30 animate-pulse"
+                          : "text-[#A6A5A4] border-[#E5E5E5] hover:border-[#FB631B] hover:text-[#FB631B]"
+                    )}
+                  >
+                    <FileText className="w-2.5 h-2.5" />
+                    {reportStates[event.eventId]?.status === "completed" ? "View report" : reportStates[event.eventId]?.status === "running" ? "Generating..." : "Generate report"}
+                  </button>
+                </div>
               </div>
-              <div className="text-[13px] font-medium leading-[17px] text-[#181818] mb-[6px]">{event.headline}</div>
-              {/* Actions */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleOpenReport(event, monitor); }}
-                  className={clsx(
-                    "inline-flex items-center gap-1 font-mono text-[8px] uppercase tracking-[0.02em] border rounded-[2px] px-2 py-1 transition-colors",
-                    reportStates[event.eventId]?.status === "completed"
-                      ? "text-[#1F8A5B] border-[#1F8A5B] bg-[#1F8A5B]/10"
-                      : reportStates[event.eventId]?.status === "running"
-                        ? "text-[#FB631B] border-[#FB631B] bg-[#FCDDCF]/30 animate-pulse"
-                        : "text-[#A6A5A4] border-[#E5E5E5] hover:border-[#FB631B] hover:text-[#FB631B]"
-                  )}
-                >
-                  <FileText className="w-2.5 h-2.5" />
-                  {reportStates[event.eventId]?.status === "completed" ? "View report" : reportStates[event.eventId]?.status === "running" ? "Generating..." : "Generate report"}
-                </button>
-              </div>
+              {/* Locate icon */}
+              <button
+                onClick={(e) => { e.stopPropagation(); handleLocate(monitor); }}
+                className="text-[#A6A5A4] hover:text-[#FB631B] transition-colors shrink-0 self-start mt-1"
+                title="Locate on map"
+              >
+                <Crosshair className="w-3 h-3" />
+              </button>
             </div>
-            {/* Locate icon */}
-            <button
-              onClick={(e) => { e.stopPropagation(); handleLocate(monitor); }}
-              className="text-[#A6A5A4] hover:text-[#FB631B] transition-colors shrink-0 self-start mt-1"
-              title="Locate on map"
-            >
-              <Crosshair className="w-3 h-3" />
-            </button>
-          </div>
-        ))}
+          );
+        })}
         {filteredEvents.length > 20 && (
           <div className="px-[18px] py-[13px] border-t border-[#E5E5E5]">
             <span className="font-mono text-[10px] text-[#FB631B]">View all {filteredEvents.length} {filterLabel || ""} events →</span>
