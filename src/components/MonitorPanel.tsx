@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useState, useMemo } from "react";
 import clsx from "clsx";
-import { ExternalLink, FileText, Crosshair } from "lucide-react";
+import { ExternalLink, Crosshair } from "lucide-react";
 import type { Monitor, MonitorDetection } from "@/lib/types";
 import {
   MONITOR_CATEGORY_LABELS,
@@ -10,7 +10,6 @@ import {
   SEVERITY_COLORS,
   REGION_CENTROIDS,
 } from "@/lib/constants";
-import { ResearchReport } from "./ResearchReport";
 
 type BreakdownDim = "time" | "region" | "category" | "severity";
 
@@ -29,8 +28,6 @@ export function MonitorPanel({
 }: MonitorPanelProps) {
   const [breakdown, setBreakdown] = useState<BreakdownDim>("category");
   const [filterBucket, setFilterBucket] = useState<string | null>(null);
-  const [reportTarget, setReportTarget] = useState<{ event: MonitorDetection; monitor: Monitor } | null>(null);
-  const [reportStates, setReportStates] = useState<Record<string, { status: "running" | "completed"; content?: string; runId?: string }>>({});
 
   // Flatten all events
   const allEvents = useMemo(() => {
@@ -48,34 +45,27 @@ export function MonitorPanel({
   // Bucket events by the current breakdown dimension
   const buckets = useMemo(() => {
     const map: Record<string, { total: number; critical: number; color: string }> = {};
-
     for (const { event, monitor } of allEvents) {
       let key: string;
       let color = "#FB631B";
-
       if (breakdown === "category") {
         key = event.category;
         color = MONITOR_CATEGORY_COLORS[event.category] || "#FB631B";
       } else if (breakdown === "region") {
         key = monitor.name;
-        color = "#FB631B";
       } else if (breakdown === "severity") {
         key = event.severity;
         color = SEVERITY_COLORS[event.severity] || "#858483";
       } else {
-        // time — group by week
         const d = new Date(event.eventDate);
         const weekStart = new Date(d);
         weekStart.setDate(d.getDate() - d.getDay());
         key = weekStart.toISOString().slice(0, 10);
-        color = "#FB631B";
       }
-
       if (!map[key]) map[key] = { total: 0, critical: 0, color };
       map[key].total++;
       if (event.severity === "critical") map[key].critical++;
     }
-
     return Object.entries(map)
       .map(([key, v]) => ({ key, ...v }))
       .sort((a, b) => breakdown === "time" ? a.key.localeCompare(b.key) : b.total - a.total);
@@ -88,7 +78,6 @@ export function MonitorPanel({
       if (breakdown === "category") return event.category === filterBucket;
       if (breakdown === "region") return monitor.name === filterBucket;
       if (breakdown === "severity") return event.severity === filterBucket;
-      // time
       const d = new Date(event.eventDate);
       const weekStart = new Date(d);
       weekStart.setDate(d.getDate() - d.getDay());
@@ -96,42 +85,9 @@ export function MonitorPanel({
     });
   }, [allEvents, filterBucket, breakdown]);
 
-  // Check report status on mount
-  const checkedReports = useRef(false);
-  useEffect(() => {
-    if (checkedReports.current || allEvents.length === 0) return;
-    checkedReports.current = true;
-    for (const { event } of allEvents) {
-      fetch(`/api/research?eventId=${encodeURIComponent(event.eventId)}`)
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.content) setReportStates((prev) => ({ ...prev, [event.eventId]: { status: "completed", content: data.content, runId: data.runId } }));
-          else if (data.runId && data.status === "running") setReportStates((prev) => ({ ...prev, [event.eventId]: { status: "running", runId: data.runId } }));
-        })
-        .catch(() => {});
-    }
-  }, [allEvents]);
-
-  function handleOpenReport(event: MonitorDetection, monitor: Monitor) {
-    fetch(`/api/research?eventId=${encodeURIComponent(event.eventId)}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.content) setReportStates((prev) => ({ ...prev, [event.eventId]: { status: "completed", content: data.content, runId: data.runId } }));
-        else if (data.runId) setReportStates((prev) => ({ ...prev, [event.eventId]: { status: "running", runId: data.runId } }));
-        setReportTarget({ event, monitor });
-      })
-      .catch(() => setReportTarget({ event, monitor }));
-  }
-
-  function handleReportStatusChange(eventId: string, status: "running" | "completed", content?: string, runId?: string) {
-    setReportStates((prev) => ({ ...prev, [eventId]: { status, content, runId } }));
-  }
-
   const maxBucket = Math.max(...buckets.map((b) => b.total), 1);
-
   const filterLabel = filterBucket
-    ? breakdown === "category" ? (MONITOR_CATEGORY_LABELS[filterBucket as keyof typeof MONITOR_CATEGORY_LABELS] || filterBucket)
-      : filterBucket
+    ? breakdown === "category" ? (MONITOR_CATEGORY_LABELS[filterBucket as keyof typeof MONITOR_CATEGORY_LABELS] || filterBucket) : filterBucket
     : null;
 
   function handleLocate(monitor: Monitor) {
@@ -161,28 +117,19 @@ export function MonitorPanel({
       <div className="flex-1 overflow-y-auto">
         {/* Pivot chart block */}
         <div className="px-[18px] py-[14px] border-b border-[#E5E5E5]">
-          {/* Breakdown selector */}
           <div className="flex items-center justify-between mb-[14px]">
             <span className="font-mono uppercase text-[10.4px] tracking-[0.06em] text-[#A6A5A4]">Break down by</span>
             <div className="flex gap-[4px]">
               {(["time", "region", "category", "severity"] as const).map((dim) => (
-                <button
-                  key={dim}
-                  onClick={() => { setBreakdown(dim); setFilterBucket(null); }}
-                  className={clsx(
-                    "font-mono text-[8px] uppercase tracking-[0.05em] px-[9px] py-[4px] rounded-[2px] transition-colors whitespace-nowrap",
+                <button key={dim} onClick={() => { setBreakdown(dim); setFilterBucket(null); }}
+                  className={clsx("font-mono text-[8px] uppercase tracking-[0.05em] px-[9px] py-[4px] rounded-[2px] transition-colors whitespace-nowrap",
                     breakdown === dim ? "bg-[#181818] text-white" : "text-[#858483] hover:bg-[#F6F6F6] hover:text-[#181818]"
-                  )}
-                >
-                  {dim}
-                </button>
+                  )}>{dim}</button>
               ))}
             </div>
           </div>
 
-          {/* Chart */}
           {breakdown === "time" ? (
-            /* Vertical stacked bar chart */
             <div>
               <div className="flex items-end gap-[5px] h-[84px] border-b border-[#E5E5E5]">
                 {buckets.map((b) => {
@@ -191,11 +138,8 @@ export function MonitorPanel({
                   const restH = totalH - critH;
                   const isActive = filterBucket === b.key;
                   return (
-                    <div
-                      key={b.key}
-                      onClick={() => setFilterBucket(filterBucket === b.key ? null : b.key)}
-                      className={clsx("flex-1 flex flex-col justify-end h-full cursor-pointer rounded-t-[2px] transition-opacity", !isActive && filterBucket ? "opacity-40" : "")}
-                    >
+                    <div key={b.key} onClick={() => setFilterBucket(filterBucket === b.key ? null : b.key)}
+                      className={clsx("flex-1 flex flex-col justify-end h-full cursor-pointer rounded-t-[2px] transition-opacity", !isActive && filterBucket ? "opacity-40" : "")}>
                       {critH > 0 && <span className="rounded-t-[1px]" style={{ height: `${critH}%`, background: "#E14942" }} />}
                       <span style={{ height: `${restH}%`, background: "#FB631B" }} />
                     </div>
@@ -208,23 +152,16 @@ export function MonitorPanel({
               </div>
             </div>
           ) : (
-            /* Horizontal bars */
             <div className="flex flex-col gap-[3px]">
               {buckets.slice(0, 12).map((b, i) => {
                 const pct = (b.total / maxBucket) * 100;
                 const isActive = filterBucket === b.key;
                 const label = breakdown === "category" ? (MONITOR_CATEGORY_LABELS[b.key as keyof typeof MONITOR_CATEGORY_LABELS] || b.key) : b.key;
                 return (
-                  <div
-                    key={b.key}
-                    onClick={() => setFilterBucket(filterBucket === b.key ? null : b.key)}
-                    className={clsx(
-                      "flex items-center gap-[8px] py-[3px] px-[6px] rounded-[2px] cursor-pointer transition-colors",
-                      isActive ? "bg-[#FCDDCF55]" : "hover:bg-[#FAF8F4]",
-                      i === 0 && !filterBucket ? "bg-[#FCDDCF55]" : ""
-                    )}
-                    style={isActive ? { borderLeft: "2px solid #FB631B", paddingLeft: 4 } : {}}
-                  >
+                  <div key={b.key} onClick={() => setFilterBucket(filterBucket === b.key ? null : b.key)}
+                    className={clsx("flex items-center gap-[8px] py-[3px] px-[6px] rounded-[2px] cursor-pointer transition-colors",
+                      isActive ? "bg-[#FCDDCF55]" : "hover:bg-[#FAF8F4]", i === 0 && !filterBucket ? "bg-[#FCDDCF55]" : ""
+                    )} style={isActive ? { borderLeft: "2px solid #FB631B", paddingLeft: 4 } : {}}>
                     <span className="font-mono text-[10.5px] text-[#181818] w-[120px] truncate shrink-0">{label}</span>
                     <div className="flex-1 h-[13px] bg-[#F2EFEA] rounded-[2px] overflow-hidden">
                       <div className="h-full rounded-[2px]" style={{ width: `${pct}%`, background: b.color }} />
@@ -236,7 +173,6 @@ export function MonitorPanel({
             </div>
           )}
 
-          {/* Legend */}
           <div className="flex items-center justify-between mt-[10px]">
             <div className="flex gap-[13px]">
               <span className="flex items-center gap-[5px]"><span className="w-2 h-2 bg-[#FB631B] rounded-[1px]" /><span className="font-mono text-[8.5px] text-[#858483]">All events</span></span>
@@ -257,22 +193,18 @@ export function MonitorPanel({
           </div>
         )}
 
-        {/* Feed section label */}
+        {/* Feed */}
         <div className="px-[18px] py-[11px] pb-[7px]">
           <span className="font-mono uppercase text-[10.4px] tracking-[0.06em] text-[#A6A5A4]">
-            {filterBucket
-              ? `${filterLabel} · ${filteredEvents.length} event${filteredEvents.length !== 1 ? "s" : ""}`
-              : `All events · newest first`}
+            {filterBucket ? `${filterLabel} · ${filteredEvents.length} event${filteredEvents.length !== 1 ? "s" : ""}` : "All events · newest first"}
           </span>
         </div>
         {filteredEvents.slice(0, 20).map(({ event, monitor }) => {
           const validCitations = event.citations.filter((c) => c.url?.startsWith("http"));
           return (
             <div key={event.eventId} className="flex gap-[10px] px-[18px] py-[11px] border-t border-[#E5E5E5] hover:bg-[#FAF8F4] transition-colors">
-              {/* Severity bar */}
               <span className="w-[3px] self-stretch rounded-[2px]" style={{ background: SEVERITY_COLORS[event.severity] || "#858483" }} />
               <div className="flex-1 min-w-0">
-                {/* Header: monitor + category + date */}
                 <div className="flex items-center justify-between gap-2 mb-[4px]">
                   <div className="flex items-center gap-[7px]">
                     <span className="font-mono uppercase text-[8px] tracking-[0.05em] font-medium px-[5px] py-[2px] rounded-[2px] text-white" style={{ background: MONITOR_CATEGORY_COLORS[event.category] || "#858483" }}>
@@ -282,15 +214,11 @@ export function MonitorPanel({
                   </div>
                   <span className="font-mono text-[9px] text-[#A6A5A4] shrink-0">{event.eventDate}</span>
                 </div>
-                {/* Headline */}
                 <div className="text-[13px] font-medium leading-[17px] text-[#181818] mb-[4px]">{event.headline}</div>
-                {/* Summary */}
                 <p className="text-[13px] text-[#5C5B59] leading-[19px] mb-[6px]">{event.summary}</p>
-                {/* Affected entities */}
                 {event.affectedEntities && (
                   <p className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#A6A5A4] mb-[6px]">Affects: {event.affectedEntities}</p>
                 )}
-                {/* Citations + actions */}
                 <div className="flex items-center gap-[6px] flex-wrap">
                   {validCitations.map((cite, ci) => (
                     <a key={ci} href={cite.url} target="_blank" rel="noopener noreferrer"
@@ -299,28 +227,10 @@ export function MonitorPanel({
                       <ExternalLink className="w-2.5 h-2.5" />
                     </a>
                   ))}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleOpenReport(event, monitor); }}
-                    className={clsx(
-                      "inline-flex items-center gap-1 font-mono text-[8px] uppercase tracking-[0.02em] border rounded-[2px] px-2 py-1 transition-colors",
-                      reportStates[event.eventId]?.status === "completed"
-                        ? "text-[#1F8A5B] border-[#1F8A5B] bg-[#1F8A5B]/10"
-                        : reportStates[event.eventId]?.status === "running"
-                          ? "text-[#FB631B] border-[#FB631B] bg-[#FCDDCF]/30 animate-pulse"
-                          : "text-[#A6A5A4] border-[#E5E5E5] hover:border-[#FB631B] hover:text-[#FB631B]"
-                    )}
-                  >
-                    <FileText className="w-2.5 h-2.5" />
-                    {reportStates[event.eventId]?.status === "completed" ? "View report" : reportStates[event.eventId]?.status === "running" ? "Generating..." : "Generate report"}
-                  </button>
                 </div>
               </div>
-              {/* Locate icon */}
-              <button
-                onClick={(e) => { e.stopPropagation(); handleLocate(monitor); }}
-                className="text-[#A6A5A4] hover:text-[#FB631B] transition-colors shrink-0 self-start mt-1"
-                title="Locate on map"
-              >
+              <button onClick={(e) => { e.stopPropagation(); handleLocate(monitor); }}
+                className="text-[#A6A5A4] hover:text-[#FB631B] transition-colors shrink-0 self-start mt-1" title="Locate on map">
                 <Crosshair className="w-3 h-3" />
               </button>
             </div>
@@ -332,17 +242,6 @@ export function MonitorPanel({
           </div>
         )}
       </div>
-
-      {/* Research report modal */}
-      {reportTarget && (
-        <ResearchReport
-          event={reportTarget.event}
-          monitor={reportTarget.monitor}
-          onClose={() => setReportTarget(null)}
-          existingState={reportStates[reportTarget.event.eventId]}
-          onStatusChange={handleReportStatusChange}
-        />
-      )}
     </div>
   );
 }
