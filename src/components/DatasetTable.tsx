@@ -115,28 +115,11 @@ export function DatasetTable({ datacenters, monitors, snapshotUpdates = {} }: Da
           )}
         </div>
 
-        {/* Legend bar (8a) */}
+        {/* Legend bar */}
         <div className="flex items-center gap-3 px-4 py-1.5 border-b border-[#E5E5E5] bg-[#FCFBFA] shrink-0 flex-wrap text-[9px]">
-          <span className="font-mono uppercase text-[8px] tracking-[0.06em] text-[#A6A5A4]">Monitors</span>
-          {/* Severity swatches */}
-          <span className="inline-flex items-center gap-1.5">
-            <span className="flex gap-[1.5px]">
-              <span className="w-[7px] h-[5px] rounded-[1px]" style={{ background: "#E14942" }} />
-              <span className="w-[7px] h-[5px] rounded-[1px]" style={{ background: "#FB631B" }} />
-              <span className="w-[7px] h-[5px] rounded-[1px]" style={{ background: "#858483" }} />
-            </span>
-            <span className="font-mono text-[9px] text-[#858483]">Event signal (news)</span>
-          </span>
-          {/* Snapshot */}
           <span className="inline-flex items-center gap-1.5">
             <RefreshCw className="w-[11px] h-[11px] text-[#FB631B]" />
-            <span className="font-mono text-[9px] text-[#858483]">Snapshot re-verify</span>
-          </span>
-          <span className="w-px h-[13px] bg-[#E5E5E5]" />
-          {/* Cell changed */}
-          <span className="inline-flex items-center gap-1.5">
-            <span className="text-[#FB631B] text-[10px]">▲</span>
-            <span className="font-mono text-[9px] text-[#858483]">Cell value changed this run</span>
+            <span className="font-mono text-[9px] text-[#858483]">Cell value updated</span>
           </span>
           {/* Activity window */}
           <div className="ml-auto flex items-center gap-1.5">
@@ -192,37 +175,29 @@ export function DatasetTable({ datacenters, monitors, snapshotUpdates = {} }: Da
                       <Cell dc={dc} field="verified_name" value={dc.name} onClick={openBasis} facilityIndex={originalIndex} className="truncate block font-medium text-[#1D1B16]" />
                     </td>
 
-                    {/* Monitors cell (8a design) */}
+                    {/* Monitors cell */}
                     <td className="px-3 py-[7px] whitespace-nowrap border-b border-[#F1F0EC]">
-                      {events.length > 0 || snapshot ? (
-                        <button
-                          onClick={() => setSignalModal({ monitor: monitor || null, facilityName: dc.name, facilityIndex: originalIndex, snapshot: snapshot || null })}
-                          className="inline-flex flex-col gap-[3px] cursor-pointer"
-                        >
-                          {events.length > 0 && (
-                            <>
-                              <div className="flex items-center gap-[6px]">
-                                <span className="font-mono text-[9px] text-[#181818] tracking-[0.04em]">{events.length} signals</span>
-                                {events[0] && <span className="font-mono text-[8px] text-[#A6A5A4]">{timeAgo(events[0].eventDate)}</span>}
-                              </div>
-                              {/* Severity strip */}
-                              <div className="flex gap-[2px]">
-                                {severityStrip.map((color, si) => (
-                                  <span key={si} className="w-[16px] h-[5px] rounded-[1px]" style={{ background: color }} />
-                                ))}
-                              </div>
-                            </>
-                          )}
-                          {snapshot && (
-                            <div className="flex items-center gap-[4px]">
-                              <RefreshCw className="w-[10px] h-[10px] text-[#FB631B]" />
-                              <span className="font-mono text-[8.5px] text-[#FB631B]">{snapshot.changedFields.length} fields re-verified</span>
+                      {(() => {
+                        const totalCount = events.length + (snapshot ? snapshot.changedFields.length : 0);
+                        if (totalCount === 0) return <span className="font-mono text-[11px] text-[#E5E5E5]">&mdash;</span>;
+                        return (
+                          <button
+                            onClick={() => setSignalModal({ monitor: monitor || null, facilityName: dc.name, facilityIndex: originalIndex, snapshot: snapshot || null })}
+                            className="inline-flex flex-col gap-[3px] cursor-pointer hover:bg-[#FCDDCF]/20 px-2 py-0.5 rounded-[2px] transition-colors"
+                          >
+                            <div className="flex items-center gap-[6px]">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#FB631B] animate-pulse" />
+                              <span className="font-mono text-[9px] text-[#181818] tracking-[0.04em]">{totalCount} updates</span>
                             </div>
-                          )}
-                        </button>
-                      ) : (
-                        <span className="font-mono text-[11px] text-[#E5E5E5]">&mdash;</span>
-                      )}
+                            {snapshot && snapshot.changedFields.length > 0 && (
+                              <div className="flex items-center gap-[4px]">
+                                <RefreshCw className="w-[10px] h-[10px] text-[#FB631B]" />
+                                <span className="font-mono text-[8.5px] text-[#FB631B]">{snapshot.changedFields.length} fields updated</span>
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })()}
                     </td>
 
                     <EC className="max-w-[160px]" changed={changedFields.includes("verified_operator")} field="verified_operator" snapshot={snapshot} hoveredDiff={hoveredDiff} setHoveredDiff={setHoveredDiff} idx={originalIndex}>
@@ -355,7 +330,7 @@ function EC({ children, className, changed, field, snapshot, hoveredDiff, setHov
       {changed && <span className="absolute left-0 top-[5px] bottom-[5px] w-[2px] bg-[#FB631B]" />}
       <span className="flex items-center gap-1">
         {children}
-        {changed && <span className="text-[#FB631B] text-[9px] shrink-0">▲</span>}
+        {changed && <RefreshCw className="w-[9px] h-[9px] text-[#FB631B] shrink-0" />}
       </span>
       {/* Hover popover for changed cell */}
       {isHovered && changed && field && snapshot && (

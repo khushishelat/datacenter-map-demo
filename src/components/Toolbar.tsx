@@ -59,7 +59,6 @@ export function Toolbar({
           counts={counts}
           onChange={onFilterChange}
         />
-        <SearchInput value={searchQuery} onChange={onSearchChange} />
       </div>
     </div>
   );
