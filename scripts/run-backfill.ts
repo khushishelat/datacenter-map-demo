@@ -11,7 +11,7 @@
 import * as fs from "fs";
 import { MONITOR_DEFS } from "./monitor-configs";
 
-const API_KEY = process.env.PARALLEL_API_KEY || "feQGW1NtoZC9N6XxL1j9UNIWdVeoP6I8IP4yHeeK";
+const API_KEY = process.env.PARALLEL_API_KEY;
 const BASE_URL = "https://api.parallel.ai";
 
 const OUTPUT_SCHEMA = {

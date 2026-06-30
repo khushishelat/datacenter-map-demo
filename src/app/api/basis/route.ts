@@ -2,42 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-// Cache the full enrichments in memory after first fetch
-let cachedEnrichments: Record<string, unknown> | null = null;
+const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN || "";
+const BLOB_STORE = "tivxcppjpr6jwfkv.private.blob.vercel-storage.com";
 
-async function loadEnrichments(): Promise<Record<string, unknown>> {
-  if (cachedEnrichments) return cachedEnrichments;
-
-  const blobUrl = process.env.ENRICHMENTS_BLOB_URL;
-
-  if (blobUrl) {
-    // Production: fetch from Vercel Blob (private store needs token)
-    const token = process.env.BLOB_READ_WRITE_TOKEN;
-    const headers: Record<string, string> = {};
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(blobUrl, { cache: "no-store", headers });
-    if (res.ok) {
-      cachedEnrichments = await res.json();
-      return cachedEnrichments!;
-    }
-  }
-
-  // Dev fallback: read from local file
-  try {
-    const fs = await import("fs");
-    const path = await import("path");
-    const filePath = path.join(process.cwd(), "public/data/enrichments.json");
-    if (fs.existsSync(filePath)) {
-      cachedEnrichments = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-      return cachedEnrichments!;
-    }
-  } catch {
-    // Not available
-  }
-
-  return {};
-}
-
+/**
+ * Fetches basis data for a single facility from Vercel Blob.
+ * Each facility is stored as its own ~95KB file: enrichments/{index}.json
+ * No more loading 181MB into memory.
+ */
 export async function GET(request: NextRequest) {
   const facilityIndex = request.nextUrl.searchParams.get("facility");
   const field = request.nextUrl.searchParams.get("field");
@@ -46,11 +18,38 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing facility param" }, { status: 400 });
   }
 
-  const enrichments = await loadEnrichments();
-  const entry = enrichments[facilityIndex] as {
+  // Fetch this one facility's enrichment from Blob (~95KB)
+  let entry: {
     enrichment?: Record<string, unknown>;
     basis?: { field?: string; reasoning?: string; citations?: { url?: string; title?: string; excerpts?: string[] }[] }[];
-  } | undefined;
+  } | null = null;
+
+  try {
+    const url = `https://${BLOB_STORE}/enrichments/${facilityIndex}.json`;
+    const res = await fetch(url, {
+      headers: BLOB_TOKEN ? { Authorization: `Bearer ${BLOB_TOKEN}` } : {},
+      cache: "no-store",
+    });
+
+    if (res.ok) {
+      entry = await res.json();
+    }
+  } catch {
+    // Blob fetch failed
+  }
+
+  // Dev fallback: read from local file
+  if (!entry) {
+    try {
+      const fs = await import("fs");
+      const path = await import("path");
+      const filePath = path.join(process.cwd(), "public/data/enrichments.json");
+      if (fs.existsSync(filePath)) {
+        const all = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+        entry = all[facilityIndex] || null;
+      }
+    } catch {}
+  }
 
   if (!entry) {
     return NextResponse.json({ citations: [], reasoning: "" });
@@ -58,7 +57,6 @@ export async function GET(request: NextRequest) {
 
   const basis = entry.basis || [];
 
-  // If a specific field is requested, filter basis to that field
   if (field) {
     const fieldBasis = basis.filter((b) => b.field === field);
     const reasoning = fieldBasis[0]?.reasoning || "";
@@ -70,11 +68,9 @@ export async function GET(request: NextRequest) {
         excerpts: c.excerpts || [],
       }))
     );
-
     return NextResponse.json({ citations, reasoning });
   }
 
-  // Return all basis for this facility
   const citations = basis.flatMap((b) =>
     (b.citations || []).map((c) => ({
       field: b.field || "",

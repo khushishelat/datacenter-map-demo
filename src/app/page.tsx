@@ -25,11 +25,10 @@ type FilterKey = DisplayStatus | "all";
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>("map");
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
-  const [searchQuery, setSearchQuery] = useState("");
   const [selectedMonitor, setSelectedMonitor] = useState<Monitor | null>(null);
   const [focusedLocation, setFocusedLocation] = useState<{ lat: number; lng: number } | null>(null);
 
-  const { filtered, counts } = useDatacenters(activeFilter, searchQuery);
+  const { filtered, counts } = useDatacenters(activeFilter, "");
   const { monitors, totalEvents, lastChecked, snapshotUpdates } = useMonitors();
 
   const lastCheckedStr = lastChecked.toLocaleTimeString("en-US", {
@@ -67,8 +66,6 @@ export default function Home() {
         activeFilter={activeFilter}
         counts={counts}
         onFilterChange={(f) => { setActiveFilter(f); setSelectedMonitor(null); }}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
         trackedCount={filtered.length}
       />
 

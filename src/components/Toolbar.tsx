@@ -3,7 +3,6 @@
 import clsx from "clsx";
 import type { DisplayStatus } from "@/lib/types";
 import { FilterPills } from "./FilterPills";
-import { SearchInput } from "./SearchInput";
 
 type Tab = "map" | "dataset";
 type FilterKey = DisplayStatus | "all";
@@ -14,8 +13,6 @@ interface ToolbarProps {
   activeFilter: FilterKey;
   counts: Record<FilterKey, number>;
   onFilterChange: (filter: FilterKey) => void;
-  searchQuery: string;
-  onSearchChange: (query: string) => void;
   trackedCount: number;
 }
 
@@ -25,8 +22,6 @@ export function Toolbar({
   activeFilter,
   counts,
   onFilterChange,
-  searchQuery,
-  onSearchChange,
   trackedCount,
 }: ToolbarProps) {
   return (
