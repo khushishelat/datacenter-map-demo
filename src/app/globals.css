@@ -92,3 +92,9 @@ body {
 .facility-tooltip::before {
   border-top-color: var(--color-grey-300) !important;
 }
+
+/* Pulse animation for monitor status dot */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}

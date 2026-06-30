@@ -1,45 +1,123 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import clsx from "clsx";
-import { ExternalLink, FileText } from "lucide-react";
+import { ExternalLink, FileText, Crosshair } from "lucide-react";
 import type { Monitor, MonitorDetection } from "@/lib/types";
-import { MonitorCard } from "./MonitorCard";
 import {
   MONITOR_CATEGORY_LABELS,
   MONITOR_CATEGORY_COLORS,
   SEVERITY_COLORS,
+  REGION_CENTROIDS,
 } from "@/lib/constants";
 import { ResearchReport } from "./ResearchReport";
 
-type ClassFilter = "all" | "region" | "facility" | "discovery" | "critical";
+type BreakdownDim = "time" | "region" | "category" | "severity";
 
 interface MonitorPanelProps {
   monitors: Monitor[];
   selectedMonitorId: string | null;
   onSelectMonitor: (monitor: Monitor | null) => void;
+  onLocateEvent?: (lat: number, lng: number) => void;
 }
 
 export function MonitorPanel({
   monitors,
   selectedMonitorId,
   onSelectMonitor,
+  onLocateEvent,
 }: MonitorPanelProps) {
-  const [classFilter, setClassFilter] = useState<ClassFilter>("all");
+  const [breakdown, setBreakdown] = useState<BreakdownDim>("category");
+  const [filterBucket, setFilterBucket] = useState<string | null>(null);
   const [reportTarget, setReportTarget] = useState<{ event: MonitorDetection; monitor: Monitor } | null>(null);
-  // Track report state per eventId — persisted server-side in Vercel Blob
   const [reportStates, setReportStates] = useState<Record<string, { status: "running" | "completed"; content?: string; runId?: string }>>({});
 
+  // Flatten all events
+  const allEvents = useMemo(() => {
+    const events: { event: MonitorDetection; monitor: Monitor }[] = [];
+    for (const m of monitors) {
+      for (const e of m.events) events.push({ event: e, monitor: m });
+    }
+    events.sort((a, b) => new Date(b.event.eventDate).getTime() - new Date(a.event.eventDate).getTime());
+    return events;
+  }, [monitors]);
+
+  const totalEvents = allEvents.length;
+  const criticalCount = allEvents.filter((e) => e.event.severity === "critical").length;
+
+  // Bucket events by the current breakdown dimension
+  const buckets = useMemo(() => {
+    const map: Record<string, { total: number; critical: number; color: string }> = {};
+
+    for (const { event, monitor } of allEvents) {
+      let key: string;
+      let color = "#FB631B";
+
+      if (breakdown === "category") {
+        key = event.category;
+        color = MONITOR_CATEGORY_COLORS[event.category] || "#FB631B";
+      } else if (breakdown === "region") {
+        key = monitor.name;
+        color = "#FB631B";
+      } else if (breakdown === "severity") {
+        key = event.severity;
+        color = SEVERITY_COLORS[event.severity] || "#858483";
+      } else {
+        // time — group by week
+        const d = new Date(event.eventDate);
+        const weekStart = new Date(d);
+        weekStart.setDate(d.getDate() - d.getDay());
+        key = weekStart.toISOString().slice(0, 10);
+        color = "#FB631B";
+      }
+
+      if (!map[key]) map[key] = { total: 0, critical: 0, color };
+      map[key].total++;
+      if (event.severity === "critical") map[key].critical++;
+    }
+
+    return Object.entries(map)
+      .map(([key, v]) => ({ key, ...v }))
+      .sort((a, b) => breakdown === "time" ? a.key.localeCompare(b.key) : b.total - a.total);
+  }, [allEvents, breakdown]);
+
+  // Filtered events
+  const filteredEvents = useMemo(() => {
+    if (!filterBucket) return allEvents;
+    return allEvents.filter(({ event, monitor }) => {
+      if (breakdown === "category") return event.category === filterBucket;
+      if (breakdown === "region") return monitor.name === filterBucket;
+      if (breakdown === "severity") return event.severity === filterBucket;
+      // time
+      const d = new Date(event.eventDate);
+      const weekStart = new Date(d);
+      weekStart.setDate(d.getDate() - d.getDay());
+      return weekStart.toISOString().slice(0, 10) === filterBucket;
+    });
+  }, [allEvents, filterBucket, breakdown]);
+
+  // Check report status on mount
+  const checkedReports = useRef(false);
+  useEffect(() => {
+    if (checkedReports.current || allEvents.length === 0) return;
+    checkedReports.current = true;
+    for (const { event } of allEvents) {
+      fetch(`/api/research?eventId=${encodeURIComponent(event.eventId)}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.content) setReportStates((prev) => ({ ...prev, [event.eventId]: { status: "completed", content: data.content, runId: data.runId } }));
+          else if (data.runId && data.status === "running") setReportStates((prev) => ({ ...prev, [event.eventId]: { status: "running", runId: data.runId } }));
+        })
+        .catch(() => {});
+    }
+  }, [allEvents]);
+
   function handleOpenReport(event: MonitorDetection, monitor: Monitor) {
-    // Check if report already exists before opening
     fetch(`/api/research?eventId=${encodeURIComponent(event.eventId)}`)
       .then((r) => r.json())
       .then((data) => {
-        if (data.content) {
-          setReportStates((prev) => ({ ...prev, [event.eventId]: { status: "completed", content: data.content, runId: data.runId } }));
-        } else if (data.runId) {
-          setReportStates((prev) => ({ ...prev, [event.eventId]: { status: "running", runId: data.runId } }));
-        }
+        if (data.content) setReportStates((prev) => ({ ...prev, [event.eventId]: { status: "completed", content: data.content, runId: data.runId } }));
+        else if (data.runId) setReportStates((prev) => ({ ...prev, [event.eventId]: { status: "running", runId: data.runId } }));
         setReportTarget({ event, monitor });
       })
       .catch(() => setReportTarget({ event, monitor }));
@@ -49,157 +127,184 @@ export function MonitorPanel({
     setReportStates((prev) => ({ ...prev, [eventId]: { status, content, runId } }));
   }
 
-  const filtered =
-    classFilter === "all" || classFilter === "critical"
-      ? monitors
-      : monitors.filter((m) => m.class === classFilter);
+  const maxBucket = Math.max(...buckets.map((b) => b.total), 1);
 
-  const totalEvents = monitors.reduce((s, m) => s + m.events.length, 0);
-  const regionCount = monitors.filter((m) => m.class === "region").length;
-  const facilityCount = monitors.filter((m) => m.class === "facility").length;
-  const discoveryCount = monitors.filter((m) => m.class === "discovery").length;
+  const filterLabel = filterBucket
+    ? breakdown === "category" ? (MONITOR_CATEGORY_LABELS[filterBucket as keyof typeof MONITOR_CATEGORY_LABELS] || filterBucket)
+      : filterBucket
+    : null;
 
-  // All events flattened chronologically
-  const allEvents = useMemo(() => {
-    const events: { event: MonitorDetection; monitor: Monitor }[] = [];
-    for (const m of monitors) {
-      for (const e of m.events) {
-        events.push({ event: e, monitor: m });
-      }
-    }
-    events.sort(
-      (a, b) => new Date(b.event.eventDate).getTime() - new Date(a.event.eventDate).getTime()
-    );
-    return events;
-  }, [monitors]);
-
-  // Critical events only
-  const criticalEvents = useMemo(
-    () => allEvents.filter((e) => e.event.severity === "critical"),
-    [allEvents]
-  );
-
-  // Check report status for all events on mount
-  const checkedReports = useRef(false);
-  useEffect(() => {
-    if (checkedReports.current || allEvents.length === 0) return;
-    checkedReports.current = true;
-    for (const { event } of allEvents) {
-      fetch(`/api/research?eventId=${encodeURIComponent(event.eventId)}`)
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.content) {
-            setReportStates((prev) => ({ ...prev, [event.eventId]: { status: "completed", content: data.content, runId: data.runId } }));
-          } else if (data.runId && data.status === "running") {
-            setReportStates((prev) => ({ ...prev, [event.eventId]: { status: "running", runId: data.runId } }));
-          }
-        })
-        .catch(() => {});
-    }
-  }, [allEvents]);
-
-  const classCounts: Record<ClassFilter, number> = {
-    all: monitors.length,
-    region: regionCount,
-    facility: facilityCount,
-    discovery: discoveryCount,
-    critical: criticalEvents.length,
-  };
+  function handleLocate(monitor: Monitor) {
+    const centroid = REGION_CENTROIDS[monitor.id];
+    if (centroid && onLocateEvent) onLocateEvent(centroid[0], centroid[1]);
+  }
 
   return (
     <div className="flex flex-col h-full border-l border-[#E5E5E5] bg-white">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-[#E5E5E5] shrink-0">
-        <div className="flex items-center justify-between mb-2">
+      <div className="px-[18px] py-[14px] border-b border-[#E5E5E5] shrink-0">
+        <div className="flex items-center justify-between mb-[6px]">
           <div className="flex items-center gap-2">
-            <span className="inline-block w-2 h-2 rounded-full bg-[#FB631B]" />
-            <span className="text-[13px] font-medium text-[#1D1B16] tracking-[0.02em]">MONITORS</span>
+            <span className="w-2 h-2 rounded-full bg-[#FB631B]" style={{ animation: "pulse-dot 2s ease-in-out infinite" }} />
+            <span className="text-[13px] font-medium text-[#181818] tracking-[0.02em]">MONITORS</span>
           </div>
-          <span className="font-mono text-[8px] uppercase tracking-[0.05em] text-[#ADADAC]">
+          <span className="font-mono uppercase text-[10.4px] tracking-[0.06em] text-[#A6A5A4]">
             {monitors.length} active &middot; {totalEvents} detected
           </span>
         </div>
-        <p className="text-[13px] text-[#858483] leading-[20px]">
-          Watching {regionCount} U.S. markets, {facilityCount} facilities, and {discoveryCount} discovery themes. Running every hour.
+        <p className="m-0 font-mono text-[13px] leading-[18px] text-[#181818]">
+          <span className="font-medium">{totalEvents} events this week</span>
+          {criticalCount > 0 && <> &middot; <span className="text-[#E14942]">{criticalCount} critical</span></>}
         </p>
       </div>
 
-      {/* Tabs */}
-      <div className="px-6 py-2 border-b border-[#E5E5E5] shrink-0 flex gap-1.5">
-        {(["all", "critical", "region", "facility", "discovery"] as const).map((cls) => (
-          <button
-            key={cls}
-            onClick={() => setClassFilter(cls)}
-            className={clsx(
-              "font-mono uppercase text-[8px] tracking-[0.05em] px-2.5 py-1 rounded-[2px] transition-colors",
-              classFilter === cls
-                ? cls === "critical"
-                  ? "bg-[#E14942] text-white"
-                  : "bg-[#1D1B16] text-white"
-                : cls === "critical" && criticalEvents.length > 0
-                  ? "text-[#E14942] hover:bg-[#E14942]/10"
-                  : "text-[#858483] hover:text-[#1D1B16] hover:bg-[#F6F6F6]"
-            )}
-          >
-            {cls === "all" ? "All" : cls} {classCounts[cls]}
-          </button>
-        ))}
-      </div>
-
-      {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        {classFilter === "all" ? (
-          /* Chronological feed */
-          allEvents.length > 0 ? (
-            <div className="divide-y divide-[#E5E5E5]">
-              {allEvents.map(({ event, monitor }) => (
-                <FeedEventCard
-                  key={event.eventId}
-                  event={event}
-                  monitor={monitor}
-                  onGenerateReport={() => handleOpenReport(event, monitor)}
-                  reportState={reportStates[event.eventId]}
-                />
+        {/* Pivot chart block */}
+        <div className="px-[18px] py-[14px] border-b border-[#E5E5E5]">
+          {/* Breakdown selector */}
+          <div className="flex items-center justify-between mb-[14px]">
+            <span className="font-mono uppercase text-[10.4px] tracking-[0.06em] text-[#A6A5A4]">Break down by</span>
+            <div className="flex gap-[4px]">
+              {(["time", "region", "category", "severity"] as const).map((dim) => (
+                <button
+                  key={dim}
+                  onClick={() => { setBreakdown(dim); setFilterBucket(null); }}
+                  className={clsx(
+                    "font-mono text-[8px] uppercase tracking-[0.05em] px-[9px] py-[4px] rounded-[2px] transition-colors whitespace-nowrap",
+                    breakdown === dim ? "bg-[#181818] text-white" : "text-[#858483] hover:bg-[#F6F6F6] hover:text-[#181818]"
+                  )}
+                >
+                  {dim}
+                </button>
               ))}
             </div>
+          </div>
+
+          {/* Chart */}
+          {breakdown === "time" ? (
+            /* Vertical stacked bar chart */
+            <div>
+              <div className="flex items-end gap-[5px] h-[84px] border-b border-[#E5E5E5]">
+                {buckets.map((b) => {
+                  const totalH = (b.total / maxBucket) * 100;
+                  const critH = (b.critical / maxBucket) * 100;
+                  const restH = totalH - critH;
+                  const isActive = filterBucket === b.key;
+                  return (
+                    <div
+                      key={b.key}
+                      onClick={() => setFilterBucket(filterBucket === b.key ? null : b.key)}
+                      className={clsx("flex-1 flex flex-col justify-end h-full cursor-pointer rounded-t-[2px] transition-opacity", !isActive && filterBucket ? "opacity-40" : "")}
+                    >
+                      {critH > 0 && <span className="rounded-t-[1px]" style={{ height: `${critH}%`, background: "#E14942" }} />}
+                      <span style={{ height: `${restH}%`, background: "#FB631B" }} />
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex justify-between mt-[6px]">
+                {buckets.length > 0 && <span className="font-mono text-[8px] text-[#A6A5A4]">{buckets[0].key.slice(5)}</span>}
+                {buckets.length > 1 && <span className="font-mono text-[8px] text-[#A6A5A4]">{buckets[buckets.length - 1].key.slice(5)}</span>}
+              </div>
+            </div>
           ) : (
-            <div className="px-6 py-12 text-center">
-              <p className="text-[13px] text-[#ADADAC]">No events detected yet.</p>
+            /* Horizontal bars */
+            <div className="flex flex-col gap-[3px]">
+              {buckets.slice(0, 12).map((b, i) => {
+                const pct = (b.total / maxBucket) * 100;
+                const isActive = filterBucket === b.key;
+                const label = breakdown === "category" ? (MONITOR_CATEGORY_LABELS[b.key as keyof typeof MONITOR_CATEGORY_LABELS] || b.key) : b.key;
+                return (
+                  <div
+                    key={b.key}
+                    onClick={() => setFilterBucket(filterBucket === b.key ? null : b.key)}
+                    className={clsx(
+                      "flex items-center gap-[8px] py-[3px] px-[6px] rounded-[2px] cursor-pointer transition-colors",
+                      isActive ? "bg-[#FCDDCF55]" : "hover:bg-[#FAF8F4]",
+                      i === 0 && !filterBucket ? "bg-[#FCDDCF55]" : ""
+                    )}
+                    style={isActive ? { borderLeft: "2px solid #FB631B", paddingLeft: 4 } : {}}
+                  >
+                    <span className="font-mono text-[10.5px] text-[#181818] w-[120px] truncate shrink-0">{label}</span>
+                    <div className="flex-1 h-[13px] bg-[#F2EFEA] rounded-[2px] overflow-hidden">
+                      <div className="h-full rounded-[2px]" style={{ width: `${pct}%`, background: b.color }} />
+                    </div>
+                    <span className="font-mono text-[10.5px] text-[#181818] w-[24px] text-right shrink-0">{b.total}</span>
+                  </div>
+                );
+              })}
             </div>
-          )
-        ) : classFilter === "critical" ? (
-          /* Critical events with report generation */
-          criticalEvents.length > 0 ? (
-            <div className="divide-y divide-[#E5E5E5]">
-              {criticalEvents.map(({ event, monitor }) => (
-                <FeedEventCard
-                  key={event.eventId}
-                  event={event}
-                  monitor={monitor}
-                  onGenerateReport={() => handleOpenReport(event, monitor)}
-                  reportState={reportStates[event.eventId]}
-                  showReportButton
-                />
-              ))}
+          )}
+
+          {/* Legend */}
+          <div className="flex items-center justify-between mt-[10px]">
+            <div className="flex gap-[13px]">
+              <span className="flex items-center gap-[5px]"><span className="w-2 h-2 bg-[#FB631B] rounded-[1px]" /><span className="font-mono text-[8.5px] text-[#858483]">All events</span></span>
+              <span className="flex items-center gap-[5px]"><span className="w-2 h-2 bg-[#E14942] rounded-[1px]" /><span className="font-mono text-[8.5px] text-[#858483]">Critical</span></span>
             </div>
-          ) : (
-            <div className="px-6 py-12 text-center">
-              <p className="text-[13px] text-[#ADADAC]">No critical events detected yet.</p>
-              <p className="text-[8px] font-mono text-[#D6D6D6] mt-1 uppercase">
-                Critical events auto-trigger deep research reports.
-              </p>
+            <span className="font-mono text-[9px] text-[#A6A5A4]">Click to filter ↓</span>
+          </div>
+        </div>
+
+        {/* Active filters */}
+        {filterBucket && (
+          <div className="flex items-center gap-[7px] flex-wrap px-[18px] py-[11px] border-b border-[#E5E5E5] bg-[#FCFBFA]">
+            <span className="font-mono uppercase text-[8px] tracking-[0.06em] text-[#A6A5A4]">Filters</span>
+            <span className="inline-flex items-center gap-[5px] font-mono text-[10px] text-[#FB631B] border border-[#FB631B] rounded-[2px] px-2 py-[4px] cursor-pointer whitespace-nowrap" onClick={() => setFilterBucket(null)}>
+              {filterLabel} <span className="text-[12px] leading-[1]">×</span>
+            </span>
+            <span className="font-mono text-[9px] text-[#A6A5A4] ml-auto">{filteredEvents.length} events</span>
+          </div>
+        )}
+
+        {/* Filtered feed */}
+        <div className="px-[18px] py-[11px] pb-[7px]">
+          <span className="font-mono uppercase text-[10.4px] tracking-[0.06em] text-[#A6A5A4]">
+            {filterLabel || "All events"} &middot; recent
+          </span>
+        </div>
+        {filteredEvents.slice(0, 20).map(({ event, monitor }) => (
+          <div key={event.eventId} className="flex gap-[10px] px-[18px] py-[11px] border-t border-[#E5E5E5] hover:bg-[#FAF8F4] transition-colors cursor-pointer">
+            {/* Severity bar */}
+            <span className="w-[3px] self-stretch rounded-[2px]" style={{ background: SEVERITY_COLORS[event.severity] || "#858483" }} />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2 mb-[4px]">
+                <span className="font-mono uppercase text-[9px] tracking-[0.04em] text-[#A6A5A4]">{monitor.name}</span>
+                <span className="font-mono text-[9px] text-[#A6A5A4]">{event.eventDate}</span>
+              </div>
+              <div className="text-[13px] font-medium leading-[17px] text-[#181818] mb-[6px]">{event.headline}</div>
+              {/* Actions */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleOpenReport(event, monitor); }}
+                  className={clsx(
+                    "inline-flex items-center gap-1 font-mono text-[8px] uppercase tracking-[0.02em] border rounded-[2px] px-2 py-1 transition-colors",
+                    reportStates[event.eventId]?.status === "completed"
+                      ? "text-[#1F8A5B] border-[#1F8A5B] bg-[#1F8A5B]/10"
+                      : reportStates[event.eventId]?.status === "running"
+                        ? "text-[#FB631B] border-[#FB631B] bg-[#FCDDCF]/30 animate-pulse"
+                        : "text-[#A6A5A4] border-[#E5E5E5] hover:border-[#FB631B] hover:text-[#FB631B]"
+                  )}
+                >
+                  <FileText className="w-2.5 h-2.5" />
+                  {reportStates[event.eventId]?.status === "completed" ? "View report" : reportStates[event.eventId]?.status === "running" ? "Generating..." : "Generate report"}
+                </button>
+              </div>
             </div>
-          )
-        ) : (
-          /* Per-monitor card view */
-          filtered.map((monitor) => (
-            <MonitorCard
-              key={monitor.id}
-              monitor={monitor}
-              isSelected={selectedMonitorId === monitor.id}
-              onSelect={() => onSelectMonitor(monitor)}
-            />
-          ))
+            {/* Locate icon */}
+            <button
+              onClick={(e) => { e.stopPropagation(); handleLocate(monitor); }}
+              className="text-[#A6A5A4] hover:text-[#FB631B] transition-colors shrink-0 self-start mt-1"
+              title="Locate on map"
+            >
+              <Crosshair className="w-3 h-3" />
+            </button>
+          </div>
+        ))}
+        {filteredEvents.length > 20 && (
+          <div className="px-[18px] py-[13px] border-t border-[#E5E5E5]">
+            <span className="font-mono text-[10px] text-[#FB631B]">View all {filteredEvents.length} {filterLabel || ""} events →</span>
+          </div>
         )}
       </div>
 
@@ -213,87 +318,6 @@ export function MonitorPanel({
           onStatusChange={handleReportStatusChange}
         />
       )}
-    </div>
-  );
-}
-
-function FeedEventCard({
-  event,
-  monitor,
-  onGenerateReport,
-  showReportButton,
-  reportState,
-}: {
-  event: MonitorDetection;
-  monitor: Monitor;
-  onGenerateReport: () => void;
-  showReportButton?: boolean;
-  reportState?: { status: "running" | "completed"; content?: string };
-}) {
-  const catLabel = MONITOR_CATEGORY_LABELS[event.category] || event.category;
-  const catColor = MONITOR_CATEGORY_COLORS[event.category] || "#858483";
-  const sevColor = SEVERITY_COLORS[event.severity] || "#858483";
-
-  const validCitations = event.citations.filter((c) => c.url && c.url.startsWith("http"));
-
-  return (
-    <div className="px-6 py-4 hover:bg-[#F9F8F4]/50 transition-colors">
-      {/* Monitor + date */}
-      <div className="flex items-center justify-between mb-2">
-        <span className="font-mono text-[8px] uppercase tracking-[0.05em] text-[#ADADAC]">
-          {monitor.name} &middot; {monitor.class}
-        </span>
-        <span className="font-mono text-[8px] text-[#ADADAC]">{event.eventDate}</span>
-      </div>
-
-      {/* Category + severity */}
-      <div className="flex items-center gap-2 mb-1.5">
-        <span className="font-mono uppercase text-[8px] tracking-[0.05em] font-medium px-2 py-0.5 rounded-[2px] text-white" style={{ backgroundColor: catColor }}>
-          {catLabel}
-        </span>
-        <span className="font-mono uppercase text-[8px] tracking-[0.05em] px-1.5 py-0.5 rounded-[2px] border" style={{ color: sevColor, borderColor: sevColor }}>
-          {event.severity}
-        </span>
-      </div>
-
-      {/* Headline */}
-      <h4 className="text-[13px] font-medium text-[#1D1B16] leading-[16px] mb-1">{event.headline}</h4>
-
-      {/* Summary */}
-      <p className="text-[13px] text-[#5C5B59] leading-[20px] mb-2">{event.summary}</p>
-
-      {/* Affected */}
-      {event.affectedEntities && (
-        <p className="font-mono text-[8px] uppercase tracking-[0.05em] text-[#ADADAC] mb-2">
-          Affects: {event.affectedEntities}
-        </p>
-      )}
-
-      {/* Citations + Generate Report button */}
-      <div className="flex items-center gap-2 flex-wrap">
-        {validCitations.slice(0, 2).map((cite, i) => (
-          <a key={i} href={cite.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-mono text-[8px] uppercase tracking-[0.02em] text-[#858483] border border-[#E5E5E5] rounded-[2px] px-2 py-1 hover:border-[#FB631B] hover:text-[#FB631B] transition-colors">
-            {cite.title && cite.title.length > 35 ? cite.title.slice(0, 35) + "..." : cite.title || "Source"}
-            <ExternalLink className="w-2.5 h-2.5" />
-          </a>
-        ))}
-        <button
-          onClick={onGenerateReport}
-          className={clsx(
-            "inline-flex items-center gap-1 font-mono text-[8px] uppercase tracking-[0.02em] border rounded-[2px] px-2 py-1 transition-colors",
-            reportState?.status === "completed"
-              ? "text-[#69BE78] border-[#69BE78] bg-[#69BE78]/10 hover:bg-[#69BE78]/20"
-              : reportState?.status === "running"
-                ? "text-[#FB631B] border-[#FB631B] bg-[#FCDDCF]/30 animate-pulse"
-                : showReportButton
-                  ? "text-[#FB631B] border-[#FB631B] bg-[#FCDDCF]/30 hover:bg-[#FCDDCF]"
-                  : "text-[#ADADAC] border-[#E5E5E5] hover:border-[#FB631B] hover:text-[#FB631B]"
-          )}
-        >
-          <FileText className="w-2.5 h-2.5" />
-          {reportState?.status === "completed" ? "View report" : reportState?.status === "running" ? "Report generating..." : "Generate report"}
-        </button>
-      </div>
     </div>
   );
 }

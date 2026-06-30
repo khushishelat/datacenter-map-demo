@@ -30,6 +30,7 @@ interface MapPanelProps {
   datacenters: Datacenter[];
   counts: Record<DisplayStatus | "all", number>;
   selectedMonitor: Monitor | null;
+  focusedLocation?: { lat: number; lng: number } | null;
 }
 
 /** Which monitor covers a given datacenter? */
@@ -148,10 +149,20 @@ function FlyToSelection({
   return null;
 }
 
+/** Flies to a specific location when triggered */
+function FlyToLocation({ location }: { location: { lat: number; lng: number } | null | undefined }) {
+  const map = useMap();
+  useEffect(() => {
+    if (location) map.flyTo([location.lat, location.lng], 7, { duration: 0.8 });
+  }, [location, map]);
+  return null;
+}
+
 export default function MapPanel({
   datacenters,
   counts,
   selectedMonitor,
+  focusedLocation,
 }: MapPanelProps) {
   // Precompute which DCs are highlighted
   const highlightSet = useMemo(() => {
@@ -191,6 +202,7 @@ export default function MapPanel({
           datacenters={datacenters}
           selectedMonitor={selectedMonitor}
         />
+        <FlyToLocation location={focusedLocation} />
         {datacenters.map((dc, i) => {
           const display = toDisplayStatus(dc.status);
           const isHighlighted = highlightSet?.has(i) ?? false;

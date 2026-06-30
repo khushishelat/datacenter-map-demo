@@ -95,6 +95,33 @@ export const STATE_TO_MONITOR: Record<string, string> = {
 /** Latitude threshold for NorCal vs SoCal */
 export const CA_SPLIT_LAT = 35.5;
 
+/** Region centroids for map flyTo */
+export const REGION_CENTROIDS: Record<string, [number, number]> = {
+  "region-nova": [38.95, -77.45],
+  "region-atlanta": [33.75, -84.39],
+  "region-ohio": [40.05, -82.75],
+  "region-phoenix": [33.45, -112.07],
+  "region-utah": [40.55, -111.90],
+  "region-texas": [31.0, -97.5],
+  "region-pnw": [47.6, -122.3],
+  "region-florida": [28.5, -81.5],
+  "region-norcal": [37.4, -122.0],
+  "region-socal": [34.0, -118.2],
+  "region-chicago": [41.88, -87.63],
+  "region-nymetro": [40.7, -74.2],
+  "region-newengland": [42.36, -71.06],
+  "region-minnesota": [44.97, -93.27],
+  "region-michigan": [42.33, -83.05],
+  "region-kentucky": [38.25, -85.76],
+  "region-nevada": [36.17, -115.14],
+  "region-dcmetro": [39.0, -76.7],
+  "region-tennessee": [36.16, -86.78],
+  "region-midwest": [39.1, -94.58],
+  "region-carolinas": [35.78, -78.64],
+  "region-colorado": [39.74, -104.99],
+  "region-pennsylvania": [40.0, -75.5],
+};
+
 export const MAP_CENTER: [number, number] = [39.8283, -98.5795];
 export const MAP_ZOOM = 5;
 export const TILE_URL =

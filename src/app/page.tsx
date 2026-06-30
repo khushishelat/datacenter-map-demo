@@ -27,6 +27,7 @@ export default function Home() {
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMonitor, setSelectedMonitor] = useState<Monitor | null>(null);
+  const [focusedLocation, setFocusedLocation] = useState<{ lat: number; lng: number } | null>(null);
 
   const { filtered, counts } = useDatacenters(activeFilter, searchQuery);
   const { monitors, totalEvents, lastChecked, snapshotUpdates } = useMonitors();
@@ -46,6 +47,12 @@ export default function Home() {
     },
     []
   );
+
+  const handleLocateEvent = useCallback((lat: number, lng: number) => {
+    setFocusedLocation({ lat, lng });
+    // Clear after flyTo initiates
+    setTimeout(() => setFocusedLocation(null), 2000);
+  }, []);
 
   return (
     <div className="flex flex-col h-screen">
@@ -73,13 +80,15 @@ export default function Home() {
                 datacenters={filtered}
                 counts={counts}
                 selectedMonitor={selectedMonitor}
+                focusedLocation={focusedLocation}
               />
             </div>
-            <div className="w-[420px] shrink-0">
+            <div className="w-[440px] shrink-0">
               <MonitorPanel
                 monitors={monitors}
                 selectedMonitorId={selectedMonitor?.id ?? null}
                 onSelectMonitor={handleMonitorSelect}
+                onLocateEvent={handleLocateEvent}
               />
             </div>
           </>
