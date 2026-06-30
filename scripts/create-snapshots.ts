@@ -13,7 +13,8 @@ const API_KEY =
 const BASE_URL = "https://api.parallel.ai";
 
 // Deployed webhook URL — update after deployment
-const WEBHOOK_URL = process.env.WEBHOOK_URL || "https://datacenter-map-demo.vercel.app/api/webhook";
+const WEBHOOK_URL = process.env.WEBHOOK_URL || "";
+if (!WEBHOOK_URL) console.warn("Warning: WEBHOOK_URL not set. Snapshots won't push events to the app.");
 
 interface RunEntry {
   runId: string;

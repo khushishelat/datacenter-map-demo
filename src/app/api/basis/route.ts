@@ -3,7 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
 const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN || "";
-const BLOB_STORE = "tivxcppjpr6jwfkv.private.blob.vercel-storage.com";
+// Derive blob store host from ENRICHMENTS_BLOB_URL (e.g., https://xxx.private.blob.vercel-storage.com/enrichments.json)
+const BLOB_STORE = (() => {
+  const url = process.env.ENRICHMENTS_BLOB_URL || "";
+  try { return new URL(url).host; } catch { return ""; }
+})();
 
 /**
  * Fetches basis data for a single facility from Vercel Blob.
