@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import clsx from "clsx";
-import { ExternalLink, Crosshair } from "lucide-react";
+import { ExternalLink, Crosshair, Mail } from "lucide-react";
 import type { Monitor, MonitorDetection } from "@/lib/types";
 import {
   MONITOR_CATEGORY_LABELS,
@@ -215,6 +215,12 @@ export function MonitorPanel({
                   <span className="font-mono text-[9px] text-[#A6A5A4] shrink-0">{event.eventDate}</span>
                 </div>
                 <div className="text-[13px] font-medium leading-[17px] text-[#181818] mb-[4px]">{event.headline}</div>
+                {event.severity === "critical" && (
+                  <div className="flex items-center gap-[5px] mb-[4px]">
+                    <Mail className="w-[11px] h-[11px] text-[#FB631B]" />
+                    <span className="font-mono text-[9px] text-[#FB631B]">In Monday&apos;s brief →</span>
+                  </div>
+                )}
                 <p className="text-[13px] text-[#5C5B59] leading-[19px] mb-[6px]">{event.summary}</p>
                 {event.affectedEntities && (
                   <p className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#A6A5A4] mb-[6px]">Affects: {event.affectedEntities}</p>
