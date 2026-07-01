@@ -151,7 +151,8 @@ function markdownToEmailHtml(md: string): string {
 </div></div>`;
 }
 
-// POST: generate newsletter + send to all subscribers
+// POST: kick off newsletter generation — returns immediately with runId
+// The preview endpoint polls for completion and finalizes (save + send)
 export async function POST() {
   if (!API_KEY) return NextResponse.json({ error: "No API key" }, { status: 500 });
 
@@ -166,16 +167,17 @@ export async function POST() {
         if (res.ok) {
           const existing = await res.json();
           if (existing.content) return NextResponse.json({ status: "already_generated", ...existing });
+          // If we have a runId but no content, it's still generating
+          if (existing.runId) return NextResponse.json({ status: "generating", runId: existing.runId, issueNumber });
         }
       }
     } catch {}
   }
 
-  // Fetch monitor events
+  // Fetch monitor events and kick off Task API
   const events = await fetchMonitorEvents();
   const prompt = buildPrompt(events);
 
-  // Call Task API
   const taskRes = await fetch(`${BASE_URL}/v1/tasks/runs`, {
     method: "POST",
     headers: { "x-api-key": API_KEY, "Content-Type": "application/json" },
@@ -189,60 +191,16 @@ export async function POST() {
   if (!taskRes.ok) return NextResponse.json({ error: await taskRes.text() }, { status: 500 });
   const task = await taskRes.json();
 
-  // Poll for completion (up to 5 min)
-  const start = Date.now();
-  while (Date.now() - start < 290000) {
-    await new Promise((r) => setTimeout(r, 5000));
-    const statusRes = await fetch(`${BASE_URL}/v1/tasks/runs/${task.run_id}`, { headers: { "x-api-key": API_KEY } });
-    if (!statusRes.ok) continue;
-    const statusData = await statusRes.json();
-
-    if (statusData.status === "completed") {
-      const resultRes = await fetch(`${BASE_URL}/v1/tasks/runs/${task.run_id}/result`, { headers: { "x-api-key": API_KEY } });
-      if (!resultRes.ok) return NextResponse.json({ error: "Failed to fetch result" }, { status: 500 });
-      const result = await resultRes.json();
-      const content = result.output?.content || "";
-      const emailHtml = markdownToEmailHtml(content);
-
-      // Save to Blob
-      const issueData = {
-        issueNumber, generatedAt: new Date().toISOString(), content, emailHtml, runId: task.run_id,
-        stats: { events: events.length, critical: events.filter((e) => e.severity === "critical").length },
-      };
-
-      if (BLOB_TOKEN) {
-        await put(`newsletters/issue-${issueNumber}.json`, JSON.stringify(issueData), {
-          access: "private", allowOverwrite: true, contentType: "application/json", token: BLOB_TOKEN,
-        });
-      }
-
-      // Send emails via Resend
-      let sentTo: string[] = [];
-      if (RESEND_KEY) {
-        const resend = new Resend(RESEND_KEY);
-        const subscribers = await getSubscribers();
-        for (const sub of subscribers) {
-          try {
-            await resend.emails.send({
-              from: "Datacenter Signal <onboarding@resend.dev>",
-              to: sub.email,
-              subject: `Datacenter Signal — Issue ${issueNumber}`,
-              html: emailHtml,
-            });
-            sentTo.push(sub.email);
-          } catch (e) {
-            console.error(`Failed to send to ${sub.email}:`, e);
-          }
-        }
-      }
-
-      return NextResponse.json({ status: "generated", issueNumber, contentLength: content.length, sentTo, runId: task.run_id });
-    }
-
-    if (statusData.status === "failed") {
-      return NextResponse.json({ error: "Task failed" }, { status: 500 });
-    }
+  // Save the pending state to Blob immediately (so we don't re-kick on next request)
+  if (BLOB_TOKEN) {
+    await put(`newsletters/issue-${issueNumber}.json`, JSON.stringify({
+      issueNumber, runId: task.run_id, status: "generating", startedAt: new Date().toISOString(),
+      stats: { events: events.length, critical: events.filter((e) => e.severity === "critical").length },
+    }), { access: "private", allowOverwrite: true, contentType: "application/json", token: BLOB_TOKEN });
   }
 
-  return NextResponse.json({ status: "timeout", runId: task.run_id }, { status: 504 });
+  return NextResponse.json({ status: "generating", runId: task.run_id, issueNumber });
 }
+
+// Exported for use by the preview route
+export { markdownToEmailHtml, getIssueNumber, getSubscribers };

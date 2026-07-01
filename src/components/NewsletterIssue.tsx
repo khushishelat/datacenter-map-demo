@@ -29,6 +29,10 @@ export function NewsletterIssue({ onClose, isSubscribed, onSubscribe }: Newslett
         setEmailHtml(data.emailHtml || "");
         setIssueNumber(data.issueNumber);
         setStatus("ready");
+      } else if (data.status === "generating") {
+        setIssueNumber(data.issueNumber || 0);
+        setStatus("generating");
+        startPolling();
       } else {
         setIssueNumber(data.issueNumber || 0);
         setStatus("not_found");
@@ -38,13 +42,7 @@ export function NewsletterIssue({ onClose, isSubscribed, onSubscribe }: Newslett
     }
   }
 
-  async function handleGenerate() {
-    setStatus("generating");
-
-    // Kick off generation (fire and forget — it takes 3-5 min)
-    fetch("/api/newsletter/generate", { method: "POST" }).catch(() => {});
-
-    // Poll for completion every 10s
+  function startPolling() {
     const pollInterval = setInterval(async () => {
       try {
         const res = await fetch("/api/newsletter/preview");
@@ -58,12 +56,13 @@ export function NewsletterIssue({ onClose, isSubscribed, onSubscribe }: Newslett
         }
       } catch {}
     }, 10000);
+    setTimeout(() => clearInterval(pollInterval), 360000);
+  }
 
-    // Timeout after 6 minutes
-    setTimeout(() => {
-      clearInterval(pollInterval);
-      if (status === "generating") setStatus("not_found");
-    }, 360000);
+  async function handleGenerate() {
+    setStatus("generating");
+    fetch("/api/newsletter/generate", { method: "POST" }).catch(() => {});
+    startPolling();
   }
 
   return (
