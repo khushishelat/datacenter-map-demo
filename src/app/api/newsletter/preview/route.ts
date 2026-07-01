@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
     const data = await res.json();
 
     // Already complete
-    if (data.content) return NextResponse.json({ status: "found", ...data });
+    if (data.content) return NextResponse.json({ ...data, status: "found" });
 
     // Still generating — check task status
     if (data.runId && data.status === "generating" && API_KEY) {
@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
               } catch {}
             }
 
-            return NextResponse.json({ status: "found", ...issueData });
+            return NextResponse.json({ ...issueData, status: "found" });
           }
         }
 
