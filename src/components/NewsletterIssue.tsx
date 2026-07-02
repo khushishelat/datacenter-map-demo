@@ -113,7 +113,7 @@ export function NewsletterIssue({ onClose, isSubscribed, onSubscribe }: Newslett
           )}
 
           {status === "ready" && emailHtml && (
-            <div dangerouslySetInnerHTML={{ __html: emailHtml }} />
+            <div dangerouslySetInnerHTML={{ __html: emailHtml.replace(/\{\{UNSUBSCRIBE_URL\}\}/g, "#") }} />
           )}
 
           {status === "ready" && !emailHtml && content && (

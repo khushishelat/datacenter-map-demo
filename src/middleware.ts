@@ -4,11 +4,17 @@ export function middleware(request: NextRequest) {
   const password = process.env.SITE_PASSWORD;
   if (!password) return NextResponse.next();
 
-  // Allow webhook and auth API without auth
+  // Allow public endpoints without auth
   if (request.nextUrl.pathname === "/api/webhook" && request.method === "POST") {
     return NextResponse.next();
   }
   if (request.nextUrl.pathname === "/api/auth") {
+    return NextResponse.next();
+  }
+  if (request.nextUrl.pathname === "/api/newsletter/subscribe") {
+    return NextResponse.next();
+  }
+  if (request.nextUrl.pathname === "/api/cron/newsletter") {
     return NextResponse.next();
   }
 
@@ -18,8 +24,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Show login page
-  if (request.nextUrl.pathname === "/login") {
+  // Show login and unsubscribe pages
+  if (request.nextUrl.pathname === "/login" || request.nextUrl.pathname === "/unsubscribe") {
     return NextResponse.next();
   }
 

@@ -147,7 +147,7 @@ function markdownToEmailHtml(md: string): string {
 <div style="padding:24px 30px">${html}</div>
 <div style="padding:24px 30px;background:#FCFBFA;border-top:1px solid #E5E5E5">
 <div style="font-family:'Courier New',monospace;font-weight:700;font-size:13px;color:#1D1B16;opacity:0.6;margin-bottom:8px">parallel</div>
-<div style="font-family:'Courier New',monospace;font-size:9px;color:#A6A5A4">hello@parallel.ai · Palo Alto, CA · <a href="#" style="color:#A6A5A4">Unsubscribe</a></div>
+<div style="font-family:'Courier New',monospace;font-size:9px;color:#A6A5A4">hello@parallel.ai · Palo Alto, CA · <a href="{{UNSUBSCRIBE_URL}}" style="color:#A6A5A4">Unsubscribe</a></div>
 </div></div>`;
 }
 
@@ -194,7 +194,7 @@ export async function POST() {
   // Save the pending state to Blob immediately (so we don't re-kick on next request)
   if (BLOB_TOKEN) {
     await put(`newsletters/issue-${issueNumber}.json`, JSON.stringify({
-      issueNumber, runId: task.run_id, status: "generating", startedAt: new Date().toISOString(),
+      issueNumber, runId: task.run_id, status: "generating", phase: "research", startedAt: new Date().toISOString(),
       stats: { events: events.length, critical: events.filter((e) => e.severity === "critical").length },
     }), { access: "private", allowOverwrite: true, contentType: "application/json", token: BLOB_TOKEN });
   }
@@ -203,4 +203,4 @@ export async function POST() {
 }
 
 // Exported for use by the preview route
-export { markdownToEmailHtml, getIssueNumber, getSubscribers };
+export { markdownToEmailHtml, getIssueNumber, getSubscribers, fetchMonitorEvents, buildPrompt };

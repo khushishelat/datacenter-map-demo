@@ -1,51 +1,55 @@
 import { NextRequest, NextResponse } from "next/server";
 import { list, put } from "@vercel/blob";
 import { Resend } from "resend";
+import { writeNewsletter, wrapEmailTemplate } from "@/lib/newsletter-writer";
+import {
+  fetchMonitorEvents,
+  getIssueNumber,
+  getSubscribers,
+  markdownToEmailHtml,
+} from "../generate/route";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300; // 5 min — needed for Claude agent writing phase
 
 const API_KEY = process.env.PARALLEL_API_KEY || "";
+const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
 const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN || "";
 const RESEND_KEY = process.env.RESEND_API_KEY || "";
 const BASE_URL = "https://api.parallel.ai";
 
-function getIssueNumber() {
-  return Math.floor((Date.now() - new Date("2024-01-01").getTime()) / (7 * 24 * 60 * 60 * 1000));
-}
+const APP_URL = process.env.VERCEL_PROJECT_PRODUCTION_URL
+  ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+  : process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : "http://localhost:3000";
 
-function markdownToEmailHtml(md: string): string {
-  let html = md;
-  html = html.replace(/&/g, "&amp;");
-  const refSection = html.split("## References");
-  if (refSection.length > 1) {
-    const refs: Record<string, { title: string; url: string }> = {};
-    for (const line of refSection[1].split("\n")) {
-      const m = line.match(/^(\d+)\.\s+\*(.+?)\*\.\s+(https?:\/\/\S+)/);
-      if (m) refs[m[1]] = { title: m[2], url: m[3] };
+async function sendEmails(emailHtml: string, issueNumber: number) {
+  if (!RESEND_KEY) return;
+  try {
+    const subscribers = await getSubscribers();
+    if (subscribers.length === 0) return;
+    const resend = new Resend(RESEND_KEY);
+    for (const sub of subscribers) {
+      try {
+        const unsubUrl = `${APP_URL}/unsubscribe?email=${encodeURIComponent(sub.email)}`;
+        const personalizedHtml = emailHtml.replace(/\{\{UNSUBSCRIBE_URL\}\}/g, unsubUrl);
+        await resend.emails.send({
+          from: "Datacenter Signal <onboarding@resend.dev>",
+          to: sub.email,
+          subject: `Datacenter Signal — Issue ${issueNumber}`,
+          html: personalizedHtml,
+          headers: {
+            "List-Unsubscribe": `<${unsubUrl}>`,
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+          },
+        });
+      } catch {}
     }
-    html = refSection[0];
-    html = html.replace(/\[(\d+)\]/g, (_, num) => {
-      const ref = refs[num];
-      if (ref) { const domain = ref.url.split("/")[2]?.replace("www.", "").split(".")[0] || "source"; return `(<a href="${ref.url}" style="color:#FB631B">${domain}</a>)`; }
-      return `[${num}]`;
-    });
-  }
-  html = html.replace(/^### (.+)$/gm, '<h3 style="font-size:15px;font-weight:500;color:#1D1B16;margin:18px 0 6px">$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2 style="font-size:17px;font-weight:500;color:#1D1B16;margin:24px 0 8px;padding-bottom:5px;border-bottom:1px solid #E5E5E5">$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1 style="font-size:20px;font-weight:500;color:#1D1B16;margin:28px 0 10px">$1</h1>');
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong style="color:#1D1B16;font-weight:500">$1</strong>');
-  html = html.replace(/(?<!\*)\*([^*]+?)\*(?!\*)/g, '<em style="color:#858483">$1</em>');
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" style="color:#FB631B;text-decoration:none">$1</a>');
-  html = html.replace(/^- (.+)$/gm, '<li style="font-size:14px;line-height:22px;color:#5C5B59;margin-bottom:4px">$1</li>');
-  html = html.replace(/((?:<li[^>]*>.*?<\/li>\n?)+)/g, '<ul style="padding-left:18px;margin:0 0 12px">$1</ul>');
-  html = html.replace(/\n\n/g, '</p><p style="font-size:14px;line-height:22px;color:#5C5B59;margin:0 0 10px">');
-  html = html.replace(/\n/g, "<br>");
-  html = '<p style="font-size:14px;line-height:22px;color:#5C5B59;margin:0 0 10px">' + html + "</p>";
-  const issueNumber = getIssueNumber();
-  return `<div style="max-width:644px;margin:0 auto;background:#fff;font-family:'Helvetica Neue',Arial,sans-serif"><div style="padding:28px 30px 18px;border-bottom:1px solid #E5E5E5;background:#FCFBFA"><div style="font-family:'Courier New',monospace;font-weight:700;font-size:18px;color:#1D1B16;margin-bottom:14px">parallel</div><div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-family:'Courier New',monospace;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:#1D1B16">Datacenter Signal</span><span style="font-family:'Courier New',monospace;font-size:9px;color:#A6A5A4">Issue ${issueNumber}</span></div></div><div style="padding:24px 30px">${html}</div><div style="padding:24px 30px;background:#FCFBFA;border-top:1px solid #E5E5E5"><div style="font-family:'Courier New',monospace;font-weight:700;font-size:13px;color:#1D1B16;opacity:0.6;margin-bottom:8px">parallel</div><div style="font-family:'Courier New',monospace;font-size:9px;color:#A6A5A4">hello@parallel.ai · Palo Alto, CA · <a href="#" style="color:#A6A5A4">Unsubscribe</a></div></div></div>`;
+  } catch {}
 }
 
-// GET: fetch latest issue — if generating, check task status and finalize
+// GET: fetch latest issue — handles two-phase pipeline (research → writing)
 export async function GET(request: NextRequest) {
   const issueParam = request.nextUrl.searchParams.get("issue");
   const issueNumber = issueParam ? parseInt(issueParam) : getIssueNumber();
@@ -64,57 +68,109 @@ export async function GET(request: NextRequest) {
     // Already complete
     if (data.content) return NextResponse.json({ ...data, status: "found" });
 
-    // Still generating — check task status
-    if (data.runId && data.status === "generating" && API_KEY) {
-      const statusRes = await fetch(`${BASE_URL}/v1/tasks/runs/${data.runId}`, { headers: { "x-api-key": API_KEY } });
-      if (statusRes.ok) {
-        const statusData = await statusRes.json();
+    // Writing phase — Claude agent is working (triggered by another request)
+    if (data.phase === "writing") {
+      // If writing has been running for >6 min, it likely timed out — allow retry
+      const writingStart = new Date(data.writingStartedAt || 0).getTime();
+      if (Date.now() - writingStart < 6 * 60 * 1000) {
+        return NextResponse.json({ status: "generating", issueNumber });
+      }
+      // Stale writing phase — fall through to re-check research
+    }
 
-        if (statusData.status === "completed") {
-          // Fetch result, finalize, save, and send emails
-          const resultRes = await fetch(`${BASE_URL}/v1/tasks/runs/${data.runId}/result`, { headers: { "x-api-key": API_KEY } });
-          if (resultRes.ok) {
-            const result = await resultRes.json();
-            const content = result.output?.content || "";
-            const emailHtml = markdownToEmailHtml(content);
+    // Research phase — check if Task API deep research completed
+    if (data.runId && API_KEY) {
+      const statusRes = await fetch(`${BASE_URL}/v1/tasks/runs/${data.runId}`, {
+        headers: { "x-api-key": API_KEY },
+      });
+      if (!statusRes.ok) return NextResponse.json({ status: "generating", issueNumber });
 
+      const statusData = await statusRes.json();
+
+      if (statusData.status === "completed") {
+        // Fetch research result
+        const resultRes = await fetch(`${BASE_URL}/v1/tasks/runs/${data.runId}/result`, {
+          headers: { "x-api-key": API_KEY },
+        });
+        if (!resultRes.ok) return NextResponse.json({ status: "generating", issueNumber });
+
+        const result = await resultRes.json();
+        const rawContent = result.output?.content;
+        const research = typeof rawContent === "string" ? rawContent : JSON.stringify(rawContent) || "";
+        const interactionId = statusData.interaction_id || data.runId;
+
+        if (ANTHROPIC_KEY) {
+          // ─── Agent approach: Claude writes the newsletter ───
+          // Mark as writing to prevent duplicate triggers
+          await put(`newsletters/issue-${issueNumber}.json`, JSON.stringify({
+            ...data, phase: "writing", writingStartedAt: new Date().toISOString(),
+          }), { access: "private", allowOverwrite: true, contentType: "application/json", token: BLOB_TOKEN });
+
+          try {
+            // Fetch current events for regional roundup
+            const events = await fetchMonitorEvents();
+            const regions = new Map<string, typeof events>();
+            for (const e of events) {
+              if (!regions.has(e.monitorName)) regions.set(e.monitorName, []);
+              regions.get(e.monitorName)!.push(e);
+            }
+
+            const bodyHtml = await writeNewsletter({
+              research,
+              interactionId,
+              issueNumber,
+              eventsTotal: events.length,
+              criticalCount: events.filter((e) => e.severity === "critical").length,
+              marketsActive: regions.size,
+              regionSummaries: Array.from(regions.entries())
+                .map(([name, evts]) => `${name} (${evts.length} events): ${evts[0]?.headline || ""}`)
+                .join("\n"),
+              parallelApiKey: API_KEY,
+              anthropicApiKey: ANTHROPIC_KEY,
+            });
+
+            const emailHtml = wrapEmailTemplate(bodyHtml, issueNumber);
             const issueData = {
-              ...data, content, emailHtml, generatedAt: new Date().toISOString(), status: "completed",
+              issueNumber, content: bodyHtml, emailHtml,
+              generatedAt: new Date().toISOString(), status: "completed",
             };
 
             await put(`newsletters/issue-${issueNumber}.json`, JSON.stringify(issueData), {
               access: "private", allowOverwrite: true, contentType: "application/json", token: BLOB_TOKEN,
             });
 
-            // Send emails
-            if (RESEND_KEY) {
-              try {
-                const subRes = await fetch(blobs.find(b => b.pathname === "newsletters/subscribers.json")?.downloadUrl || "", {
-                  headers: { Authorization: `Bearer ${BLOB_TOKEN}` },
-                });
-                if (subRes.ok) {
-                  const subData = await subRes.json();
-                  const resend = new Resend(RESEND_KEY);
-                  for (const sub of subData.subscribers || []) {
-                    try {
-                      await resend.emails.send({
-                        from: "Datacenter Signal <onboarding@resend.dev>",
-                        to: sub.email,
-                        subject: `Datacenter Signal — Issue ${issueNumber}`,
-                        html: emailHtml,
-                      });
-                    } catch {}
-                  }
-                }
-              } catch {}
-            }
-
+            await sendEmails(emailHtml, issueNumber);
             return NextResponse.json({ ...issueData, status: "found" });
+          } catch (error) {
+            console.error("[newsletter] Writing failed:", error);
+            // Reset to research phase so next poll can retry
+            await put(`newsletters/issue-${issueNumber}.json`, JSON.stringify({
+              ...data, phase: "research",
+            }), { access: "private", allowOverwrite: true, contentType: "application/json", token: BLOB_TOKEN });
+            return NextResponse.json({ status: "generating", issueNumber });
           }
-        }
+        } else {
+          // ─── Fallback: markdown-to-HTML (no Anthropic key) ───
+          const emailHtml = markdownToEmailHtml(research);
+          const issueData = {
+            ...data, content: research, emailHtml,
+            generatedAt: new Date().toISOString(), status: "completed",
+          };
 
-        return NextResponse.json({ status: "generating", issueNumber, runId: data.runId });
+          await put(`newsletters/issue-${issueNumber}.json`, JSON.stringify(issueData), {
+            access: "private", allowOverwrite: true, contentType: "application/json", token: BLOB_TOKEN,
+          });
+
+          await sendEmails(emailHtml, issueNumber);
+          return NextResponse.json({ ...issueData, status: "found" });
+        }
       }
+
+      if (statusData.status === "failed") {
+        return NextResponse.json({ status: "not_found", issueNumber, error: "Research failed" });
+      }
+
+      return NextResponse.json({ status: "generating", issueNumber, runId: data.runId });
     }
 
     return NextResponse.json({ status: "generating", issueNumber });
