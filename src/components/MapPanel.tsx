@@ -12,7 +12,7 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { ExternalLink } from "lucide-react";
-import type { Datacenter, DisplayStatus, ImpactLevel, Monitor } from "@/lib/types";
+import type { Datacenter, DisplayStatus, Monitor } from "@/lib/types";
 import {
   STATUS_COLORS,
   STATUS_LABELS,
@@ -244,30 +244,20 @@ export default function MapPanel({
   );
 }
 
-function ImpactRow({
+function ImpactChip({
   label,
-  level,
-  note,
+  color,
+  value,
 }: {
   label: string;
-  level: ImpactLevel;
-  note: string;
+  color: string;
+  value: string;
 }) {
-  if (level === "unknown" && !note) return null;
   return (
-    <div className="flex items-start gap-1.5 text-[12px] leading-[16px]">
-      <span
-        className="w-2 h-2 rounded-full mt-[3px] shrink-0"
-        style={{ backgroundColor: IMPACT_COLORS[level] }}
-      />
-      <span>
-        <span className="text-[#ADADAC]">{label}:</span>{" "}
-        <span className="text-[#5C5B59]">
-          {IMPACT_LABELS[level]}
-          {note && ` — ${note}`}
-        </span>
-      </span>
-    </div>
+    <span className="inline-flex items-center gap-1 text-[11px] leading-[14px] text-[#5C5B59] border border-[#E5E5E5] rounded-[3px] px-1.5 py-[3px]">
+      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+      <span className="text-[#ADADAC]">{label}</span> {value}
+    </span>
   );
 }
 
@@ -361,10 +351,10 @@ function FacilityPopup({
         )}
       </div>
 
-      {/* AI classification (Task API) */}
+      {/* AI classification (Task API) — compact; full analysis lives in the dataset view */}
       {dc.aiClassification && (
         <div className="mt-2 border border-[#E5E5E5] rounded-[4px] px-3 py-2">
-          <div className="flex items-center justify-between gap-2 mb-1">
+          <div className="flex items-center justify-between gap-2 mb-1.5">
             <span className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#ADADAC]">
               AI classification
             </span>
@@ -375,35 +365,10 @@ function FacilityPopup({
               {AI_CLASS_LABELS[dc.aiClassification.ai_class]}
             </span>
           </div>
-          {dc.aiClassification.ai_evidence && (
-            <p className="text-[12px] text-[#5C5B59] leading-[17px] mb-1.5">
-              {dc.aiClassification.ai_evidence}
-            </p>
-          )}
-          <div className="space-y-1">
-            <ImpactRow
-              label="Water"
-              level={dc.aiClassification.water_impact}
-              note={dc.aiClassification.water_note}
-            />
-            <ImpactRow
-              label="Grid"
-              level={dc.aiClassification.grid_impact}
-              note={dc.aiClassification.grid_note}
-            />
-            <div className="flex items-start gap-1.5 text-[12px] leading-[16px]">
-              <span
-                className="w-2 h-2 rounded-full mt-[3px] shrink-0"
-                style={{ backgroundColor: PUSHBACK_COLORS[dc.aiClassification.community_pushback] }}
-              />
-              <span>
-                <span className="text-[#ADADAC]">Community:</span>{" "}
-                <span className="text-[#5C5B59]">
-                  {PUSHBACK_LABELS[dc.aiClassification.community_pushback]}
-                  {dc.aiClassification.community_note && ` — ${dc.aiClassification.community_note}`}
-                </span>
-              </span>
-            </div>
+          <div className="flex flex-wrap gap-1">
+            <ImpactChip label="Water" color={IMPACT_COLORS[dc.aiClassification.water_impact]} value={IMPACT_LABELS[dc.aiClassification.water_impact]} />
+            <ImpactChip label="Grid" color={IMPACT_COLORS[dc.aiClassification.grid_impact]} value={IMPACT_LABELS[dc.aiClassification.grid_impact]} />
+            <ImpactChip label="Community" color={PUSHBACK_COLORS[dc.aiClassification.community_pushback]} value={PUSHBACK_LABELS[dc.aiClassification.community_pushback]} />
           </div>
         </div>
       )}
