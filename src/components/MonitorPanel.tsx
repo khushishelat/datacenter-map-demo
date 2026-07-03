@@ -11,7 +11,7 @@ import {
   REGION_CENTROIDS,
 } from "@/lib/constants";
 
-type BreakdownDim = "time" | "region" | "category" | "severity";
+type BreakdownDim = "time" | "category" | "severity";
 
 interface MonitorPanelProps {
   monitors: Monitor[];
@@ -47,14 +47,12 @@ export function MonitorPanel({
   // Bucket events by the current breakdown dimension
   const buckets = useMemo(() => {
     const map: Record<string, { total: number; critical: number; color: string }> = {};
-    for (const { event, monitor } of allEvents) {
+    for (const { event } of allEvents) {
       let key: string;
       let color = "#FB631B";
       if (breakdown === "category") {
         key = event.category;
         color = MONITOR_CATEGORY_COLORS[event.category] || "#FB631B";
-      } else if (breakdown === "region") {
-        key = monitor.name;
       } else if (breakdown === "severity") {
         key = event.severity;
         color = SEVERITY_COLORS[event.severity] || "#858483";
@@ -76,9 +74,8 @@ export function MonitorPanel({
   // Filtered events
   const filteredEvents = useMemo(() => {
     if (!filterBucket) return allEvents;
-    return allEvents.filter(({ event, monitor }) => {
+    return allEvents.filter(({ event }) => {
       if (breakdown === "category") return event.category === filterBucket;
-      if (breakdown === "region") return monitor.name === filterBucket;
       if (breakdown === "severity") return event.severity === filterBucket;
       const d = new Date(event.eventDate);
       const weekStart = new Date(d);
@@ -122,7 +119,7 @@ export function MonitorPanel({
           <div className="flex items-center justify-between mb-[14px]">
             <span className="font-mono uppercase text-[10.4px] tracking-[0.06em] text-[#A6A5A4]">Break down by</span>
             <div className="flex gap-[4px]">
-              {(["time", "region", "category", "severity"] as const).map((dim) => (
+              {(["time", "category", "severity"] as const).map((dim) => (
                 <button key={dim} onClick={() => { setBreakdown(dim); setFilterBucket(null); }}
                   className={clsx("font-mono text-[8px] uppercase tracking-[0.05em] px-[9px] py-[4px] rounded-[2px] transition-colors whitespace-nowrap",
                     breakdown === dim ? "bg-[#181818] text-white" : "text-[#858483] hover:bg-[#F6F6F6] hover:text-[#181818]"
