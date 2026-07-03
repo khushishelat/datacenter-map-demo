@@ -8,6 +8,7 @@ export interface SnapshotUpdate {
   facilityName: string;
   timestamp: string;
   changedFields: string[];
+  changes?: Record<string, { from: unknown; to: unknown }>;
 }
 
 export function useMonitors() {
@@ -45,6 +46,7 @@ export function useMonitors() {
               facilityName: u.facilityName,
               timestamp: u.timestamp,
               changedFields: u.changedFields,
+              changes: u.changes,
             };
           }
           return next;
@@ -76,6 +78,7 @@ export function useMonitors() {
               facilityName: event.facilityName || "",
               timestamp: event.receivedAt || new Date().toISOString(),
               changedFields: event.changedFields,
+              changes: event.changes,
             },
           }));
         }

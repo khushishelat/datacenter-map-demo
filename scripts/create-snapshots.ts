@@ -1,6 +1,6 @@
 /**
  * Creates snapshot monitors for all enrichment runs.
- * Each monitor watches one facility's enrichment for changes hourly.
+ * Each monitor watches one facility's enrichment for changes daily (1d).
  * Uses v2 run IDs (most complete enrichment).
  *
  * Usage: npx tsx scripts/create-snapshots.ts
@@ -40,8 +40,8 @@ async function createSnapshotMonitor(
     },
     body: JSON.stringify({
       type: "snapshot",
-      frequency: "1h",
-      processor: "lite",
+      frequency: "1d",
+      processor: "base",
       settings: { task_run_id: taskRunId },
       webhook: {
         url: WEBHOOK_URL,

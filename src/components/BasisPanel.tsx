@@ -1,8 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ExternalLink, X, Code, Loader2 } from "lucide-react";
+import { ExternalLink, X, Code, Loader2, RefreshCw } from "lucide-react";
 import { CopyCodeBlock } from "./CopyCodeBlock";
+import { timeAgo } from "@/lib/utils";
+
+function fmtValue(v: unknown): string {
+  if (v === undefined || v === null || v === "") return "—";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
 
 export interface BasisPanelData {
   field: string;
@@ -11,6 +18,10 @@ export interface BasisPanelData {
   facilityIndex: number;
   citations: { field: string; url: string; title: string }[];
   reasoning?: string;
+  /** "ai" = AI classification (client-side data, skip the enrichment fetch) */
+  source?: "enrichment" | "ai";
+  /** Present when a snapshot re-verification changed this field. */
+  update?: { from?: unknown; to?: unknown; timestamp?: string };
 }
 
 interface FullBasis {
@@ -28,10 +39,13 @@ export function BasisPanel({ data, onClose }: BasisPanelProps) {
   const [fullBasis, setFullBasis] = useState<FullBasis | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Fetch full basis from API when panel opens or data changes
+  // Fetch full basis from API when panel opens or data changes.
+  // AI classifications carry their own citations client-side — skip the
+  // enrichment-blob fetch (which has no entry for these fields).
   useEffect(() => {
-    if (!data) {
+    if (!data || data.source === "ai") {
       setFullBasis(null);
+      setLoading(false);
       return;
     }
 
@@ -79,13 +93,54 @@ export function BasisPanel({ data, onClose }: BasisPanelProps) {
 
       {/* Value */}
       <div className="px-6 py-3 border-b border-[#E5E5E5] shrink-0 bg-[#F9F8F4]">
-        <div className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#ADADAC] mb-1">
-          Value
+        <div className="flex items-center gap-1.5 mb-1">
+          <span className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#ADADAC]">
+            Value
+          </span>
+          {data.update && (
+            <span className="inline-flex items-center gap-1 font-mono uppercase text-[7px] tracking-[0.05em] text-[#FB631B] bg-[#FCDDCF] px-1.5 py-0.5 rounded-[2px]">
+              <RefreshCw className="w-2 h-2" /> Updated
+            </span>
+          )}
         </div>
         <div className="text-[13px] text-[#1D1B16] leading-[20px]">
           {data.value || "\u2014"}
         </div>
       </div>
+
+      {/* Snapshot re-verification change */}
+      {data.update && (
+        <div className="px-6 py-4 border-b border-[#E5E5E5] shrink-0 bg-[#FCDDCF]/20">
+          <div className="flex items-center gap-1.5 mb-2.5">
+            <RefreshCw className="w-3 h-3 text-[#FB631B]" />
+            <span className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#FB631B]">
+              Updated by snapshot re-verification
+            </span>
+            {data.update.timestamp && (
+              <span className="font-mono text-[8px] text-[#A6A5A4] ml-auto">{timeAgo(data.update.timestamp)}</span>
+            )}
+          </div>
+          {data.update.from !== undefined || data.update.to !== undefined ? (
+            <div className="space-y-1.5">
+              <div className="rounded-[4px] border border-[#E5E5E5] bg-white px-3 py-2">
+                <div className="font-mono uppercase text-[7px] tracking-[0.05em] text-[#A6A5A4] mb-1">Previous value</div>
+                <div className="text-[12px] text-[#A6A5A4] line-through leading-[16px] break-words">{fmtValue(data.update.from)}</div>
+              </div>
+              <div className="flex items-center justify-center">
+                <span className="font-mono text-[10px] text-[#FB631B] leading-none">&darr;</span>
+              </div>
+              <div className="rounded-[4px] border border-[#F9BC9F] bg-white px-3 py-2">
+                <div className="font-mono uppercase text-[7px] tracking-[0.05em] text-[#FB631B] mb-1">Current value</div>
+                <div className="text-[12px] text-[#1D1B16] font-medium leading-[16px] break-words">{fmtValue(data.update.to)}</div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-[12px] text-[#5C5B59] leading-[17px]">
+              This field changed in the most recent snapshot re-verification.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Scrollable body */}
       <div className="flex-1 overflow-y-auto">
@@ -150,7 +205,7 @@ export function BasisPanel({ data, onClose }: BasisPanelProps) {
       <div className="px-6 py-3 border-t border-[#E5E5E5] shrink-0">
         <div className="flex items-center gap-2">
           <span className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#FB631B] bg-[#FCDDCF] px-1.5 py-0.5 rounded-[2px]">
-            Enriched by Task API
+            {data.source === "ai" ? "Classified by Task API" : "Enriched by Task API"}
           </span>
           <button
             onClick={() => setShowCode(!showCode)}
@@ -162,44 +217,74 @@ export function BasisPanel({ data, onClose }: BasisPanelProps) {
         </div>
         {showCode && (
           <div className="mt-2">
-            <CopyCodeBlock
-              label="POST /v1/tasks/runs"
-              code={JSON.stringify({
-                input: `Research facility: ${data.facilityName}`,
-                task_spec: {
-                  output_schema: {
-                    type: "json",
-                    json_schema: {
-                      type: "object",
-                      properties: {
-                        description: { type: "string" },
-                        verified_status: { type: "string", enum: ["operational", "under-construction", "planned", "decommissioned"] },
-                        power_capacity_mw: { type: "number" },
-                        total_sqft: { type: "number" },
-                        year_online: { type: "string" },
-                        construction_update: { type: "string" },
-                        recent_news: { type: "string" },
-                        notable_tenants: { type: "string" },
-                        verified_name: { type: "string" },
-                        verified_operator: { type: "string" },
-                        verified_owner: { type: "string" },
-                        cooling_type: { type: "string" },
-                        tier_level: { type: "string" },
-                        fiber_providers: { type: "string" },
-                        num_buildings: { type: "number" },
-                        campus_acres: { type: "number" },
-                        utility_provider: { type: "string" },
-                        tax_incentives: { type: "string" },
-                        natural_hazard_zone: { type: "string" },
+            {data.source === "ai" ? (
+              <CopyCodeBlock
+                label="POST /v1/tasks/runs"
+                code={JSON.stringify({
+                  input: `Classify AI datacenter: ${data.facilityName}`,
+                  task_spec: {
+                    output_schema: {
+                      type: "json",
+                      json_schema: {
+                        type: "object",
+                        properties: {
+                          ai_class: { type: "string", enum: ["ai-training", "ai-inference", "ai-mixed", "cloud-hyperscale", "not-ai"] },
+                          ai_evidence: { type: "string" },
+                          water_impact: { type: "string", enum: ["high", "moderate", "low", "unknown"] },
+                          water_note: { type: "string" },
+                          grid_impact: { type: "string", enum: ["high", "moderate", "low", "unknown"] },
+                          grid_note: { type: "string" },
+                          community_pushback: { type: "string", enum: ["active-opposition", "some-concern", "none-found"] },
+                          community_note: { type: "string" },
+                        },
+                        required: ["ai_class", "water_impact", "grid_impact", "community_pushback"],
+                        additionalProperties: false,
                       },
-                      required: ["description", "verified_status", "verified_name", "verified_operator"],
-                      additionalProperties: false,
                     },
                   },
-                },
-                processor: "ultra2x",
-              }, null, 2)}
-            />
+                  processor: "ultra2x",
+                }, null, 2)}
+              />
+            ) : (
+              <CopyCodeBlock
+                label="POST /v1/tasks/runs"
+                code={JSON.stringify({
+                  input: `Research facility: ${data.facilityName}`,
+                  task_spec: {
+                    output_schema: {
+                      type: "json",
+                      json_schema: {
+                        type: "object",
+                        properties: {
+                          description: { type: "string" },
+                          verified_status: { type: "string", enum: ["operational", "under-construction", "planned", "decommissioned"] },
+                          power_capacity_mw: { type: "number" },
+                          total_sqft: { type: "number" },
+                          year_online: { type: "string" },
+                          construction_update: { type: "string" },
+                          recent_news: { type: "string" },
+                          notable_tenants: { type: "string" },
+                          verified_name: { type: "string" },
+                          verified_operator: { type: "string" },
+                          verified_owner: { type: "string" },
+                          cooling_type: { type: "string" },
+                          tier_level: { type: "string" },
+                          fiber_providers: { type: "string" },
+                          num_buildings: { type: "number" },
+                          campus_acres: { type: "number" },
+                          utility_provider: { type: "string" },
+                          tax_incentives: { type: "string" },
+                          natural_hazard_zone: { type: "string" },
+                        },
+                        required: ["description", "verified_status", "verified_name", "verified_operator"],
+                        additionalProperties: false,
+                      },
+                    },
+                  },
+                  processor: "ultra2x",
+                }, null, 2)}
+              />
+            )}
           </div>
         )}
       </div>

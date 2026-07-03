@@ -1,4 +1,10 @@
-import type { DisplayStatus, MonitorCategory } from "./types";
+import type {
+  AiClass,
+  CommunityPushback,
+  DisplayStatus,
+  ImpactLevel,
+  MonitorCategory,
+} from "./types";
 
 export const STATUS_MAP: Record<string, DisplayStatus> = {
   operational: "operational",
@@ -50,6 +56,48 @@ export const SEVERITY_COLORS: Record<string, string> = {
   critical: "#E14942",
   notable: "#FB631B",
   informational: "#858483",
+};
+
+export const AI_CLASS_LABELS: Record<AiClass, string> = {
+  "ai-training": "AI Training",
+  "ai-inference": "AI Inference",
+  "ai-mixed": "AI Mixed Use",
+  "cloud-hyperscale": "Cloud Hyperscale",
+  "not-ai": "Colo / Enterprise",
+};
+
+export const AI_CLASS_COLORS: Record<AiClass, string> = {
+  "ai-training": "#1D1B16",
+  "ai-inference": "#434343",
+  "ai-mixed": "#5C5B59",
+  "cloud-hyperscale": "#858483",
+  "not-ai": "#ADADAC",
+};
+
+export const IMPACT_LABELS: Record<ImpactLevel, string> = {
+  high: "High",
+  moderate: "Moderate",
+  low: "Low",
+  unknown: "Unknown",
+};
+
+export const IMPACT_COLORS: Record<ImpactLevel, string> = {
+  high: "#E14942",
+  moderate: "#FB631B",
+  low: "#69BE78",
+  unknown: "#D6D6D6",
+};
+
+export const PUSHBACK_LABELS: Record<CommunityPushback, string> = {
+  "active-opposition": "Active opposition",
+  "some-concern": "Some concern",
+  "none-found": "None found",
+};
+
+export const PUSHBACK_COLORS: Record<CommunityPushback, string> = {
+  "active-opposition": "#E14942",
+  "some-concern": "#FB631B",
+  "none-found": "#69BE78",
 };
 
 /** Maps US states to the monitor that covers them */

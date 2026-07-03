@@ -12,7 +12,7 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { ExternalLink } from "lucide-react";
-import type { Datacenter, DisplayStatus, Monitor } from "@/lib/types";
+import type { Datacenter, DisplayStatus, ImpactLevel, Monitor } from "@/lib/types";
 import {
   STATUS_COLORS,
   STATUS_LABELS,
@@ -22,6 +22,12 @@ import {
   TILE_ATTRIBUTION,
   STATE_TO_MONITOR,
   CA_SPLIT_LAT,
+  AI_CLASS_LABELS,
+  AI_CLASS_COLORS,
+  IMPACT_LABELS,
+  IMPACT_COLORS,
+  PUSHBACK_LABELS,
+  PUSHBACK_COLORS,
 } from "@/lib/constants";
 import { toDisplayStatus, formatPower, formatSqft } from "@/lib/utils";
 import { MapLegend } from "./MapLegend";
@@ -238,6 +244,33 @@ export default function MapPanel({
   );
 }
 
+function ImpactRow({
+  label,
+  level,
+  note,
+}: {
+  label: string;
+  level: ImpactLevel;
+  note: string;
+}) {
+  if (level === "unknown" && !note) return null;
+  return (
+    <div className="flex items-start gap-1.5 text-[12px] leading-[16px]">
+      <span
+        className="w-2 h-2 rounded-full mt-[3px] shrink-0"
+        style={{ backgroundColor: IMPACT_COLORS[level] }}
+      />
+      <span>
+        <span className="text-[#ADADAC]">{label}:</span>{" "}
+        <span className="text-[#5C5B59]">
+          {IMPACT_LABELS[level]}
+          {note && ` — ${note}`}
+        </span>
+      </span>
+    </div>
+  );
+}
+
 function FacilityPopup({
   dc,
   display,
@@ -327,6 +360,53 @@ function FacilityPopup({
           </div>
         )}
       </div>
+
+      {/* AI classification (Task API) */}
+      {dc.aiClassification && (
+        <div className="mt-2 border border-[#E5E5E5] rounded-[4px] px-3 py-2">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#ADADAC]">
+              AI classification
+            </span>
+            <span
+              className="font-mono uppercase text-[8px] tracking-[0.05em] font-medium px-1.5 py-0.5 rounded-[2px] text-white"
+              style={{ backgroundColor: AI_CLASS_COLORS[dc.aiClassification.ai_class] }}
+            >
+              {AI_CLASS_LABELS[dc.aiClassification.ai_class]}
+            </span>
+          </div>
+          {dc.aiClassification.ai_evidence && (
+            <p className="text-[12px] text-[#5C5B59] leading-[17px] mb-1.5">
+              {dc.aiClassification.ai_evidence}
+            </p>
+          )}
+          <div className="space-y-1">
+            <ImpactRow
+              label="Water"
+              level={dc.aiClassification.water_impact}
+              note={dc.aiClassification.water_note}
+            />
+            <ImpactRow
+              label="Grid"
+              level={dc.aiClassification.grid_impact}
+              note={dc.aiClassification.grid_note}
+            />
+            <div className="flex items-start gap-1.5 text-[12px] leading-[16px]">
+              <span
+                className="w-2 h-2 rounded-full mt-[3px] shrink-0"
+                style={{ backgroundColor: PUSHBACK_COLORS[dc.aiClassification.community_pushback] }}
+              />
+              <span>
+                <span className="text-[#ADADAC]">Community:</span>{" "}
+                <span className="text-[#5C5B59]">
+                  {PUSHBACK_LABELS[dc.aiClassification.community_pushback]}
+                  {dc.aiClassification.community_note && ` — ${dc.aiClassification.community_note}`}
+                </span>
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Construction update */}
       {e?.construction_update && (

@@ -7,6 +7,8 @@ import type { SnapshotUpdate } from "@/hooks/useMonitors";
 import {
   STATUS_COLORS, STATUS_LABELS, STATE_TO_MONITOR, CA_SPLIT_LAT,
   MONITOR_CATEGORY_LABELS, MONITOR_CATEGORY_COLORS, SEVERITY_COLORS,
+  AI_CLASS_LABELS, AI_CLASS_COLORS, IMPACT_LABELS, IMPACT_COLORS,
+  PUSHBACK_LABELS, PUSHBACK_COLORS,
 } from "@/lib/constants";
 import { toDisplayStatus, formatPower, formatSqft, timeAgo } from "@/lib/utils";
 import { ChevronUp, ChevronDown, X, RefreshCw } from "lucide-react";
@@ -50,18 +52,62 @@ export function DatasetTable({ datacenters, monitors, snapshotUpdates = {} }: Da
   } | null>(null);
   const [basisData, setBasisData] = useState<BasisPanelData | null>(null);
   const [hoveredDiff, setHoveredDiff] = useState<{ field: string; idx: number } | null>(null);
+  const [filters, setFilters] = useState({ name: "", state: "", ai: "", water: "", grid: "", community: "" });
+
+  function setFilter(key: keyof typeof filters, val: string) {
+    setFilters((f) => ({ ...f, [key]: val }));
+    setPage(0);
+  }
+  const anyFilterActive = Object.values(filters).some(Boolean);
+
+  const stateOptions = useMemo(
+    () => Array.from(new Set(datacenters.map((d) => d.state).filter(Boolean))).sort(),
+    [datacenters]
+  );
+
+  // Combinable in-table filters (AND together), applied on top of the toolbar scope/lifecycle
+  const visibleDatacenters = useMemo(() => {
+    const q = filters.name.toLowerCase().trim();
+    return datacenters.filter((dc) => {
+      if (q && !`${dc.name} ${dc.operator} ${dc.owner} ${dc.city}`.toLowerCase().includes(q)) return false;
+      if (filters.state && dc.state !== filters.state) return false;
+      if (filters.ai) {
+        if (filters.ai === "unclassified") { if (dc.aiClassification) return false; }
+        else if (dc.aiClassification?.ai_class !== filters.ai) return false;
+      }
+      if (filters.water && dc.aiClassification?.water_impact !== filters.water) return false;
+      if (filters.grid && dc.aiClassification?.grid_impact !== filters.grid) return false;
+      if (filters.community && dc.aiClassification?.community_pushback !== filters.community) return false;
+      return true;
+    });
+  }, [datacenters, filters]);
 
   const openBasis = useCallback((dc: Datacenter, field: string, value: string, facilityIndex: number) => {
     const e = dc.enrichment;
     if (!e) return;
+    const snap = snapshotUpdates[String(facilityIndex)];
+    const update = snap && snap.changedFields.includes(field)
+      ? { from: snap.changes?.[field]?.from, to: snap.changes?.[field]?.to, timestamp: snap.timestamp }
+      : undefined;
     setBasisData({
       field, value: value || "Not found", facilityName: dc.name, facilityIndex,
-      citations: e.citations || [], reasoning: e.reasoning?.[field],
+      citations: e.citations || [], reasoning: e.reasoning?.[field], source: "enrichment", update,
+    });
+  }, [snapshotUpdates]);
+
+  const openAiBasis = useCallback((dc: Datacenter, field: string, value: string, note: string, facilityIndex: number) => {
+    const ai = dc.aiClassification;
+    if (!ai) return;
+    setBasisData({
+      field, value: value || "Not found", facilityName: dc.name, facilityIndex,
+      citations: (ai.citations || []).map((c) => ({ field, url: c.url, title: c.title })),
+      reasoning: note, source: "ai",
     });
   }, []);
 
   const enrichedRows = useMemo(() => {
-    return datacenters.map((dc, originalIndex) => {
+    return visibleDatacenters.map((dc, i) => {
+      const originalIndex = dc.sourceIndex ?? i;
       const monitor = getMonitorForDc(dc, monitors);
       const events = monitor?.events || [];
       const snapshot = snapshotUpdates[String(originalIndex)];
@@ -70,7 +116,7 @@ export function DatasetTable({ datacenters, monitors, snapshotUpdates = {} }: Da
       const severityStrip = getSeverityStrip(events);
       return { dc, monitor, events, newestEvent, originalIndex, snapshot, severityStrip };
     });
-  }, [datacenters, monitors, snapshotUpdates]);
+  }, [visibleDatacenters, monitors, snapshotUpdates]);
 
   const sorted = useMemo(() => {
     return [...enrichedRows].sort((a, b) => {
@@ -105,14 +151,42 @@ export function DatasetTable({ datacenters, monitors, snapshotUpdates = {} }: Da
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Stats strip */}
         <div className="flex items-center gap-6 px-4 py-2 border-b border-[#E5E5E5] bg-[#F9F8F4] shrink-0">
-          <Stat label="Facilities" value={datacenters.length.toLocaleString()} />
-          <Stat label="Total power" value={formatPower(datacenters.reduce((s, d) => s + d.powerMw, 0))} />
+          <Stat label="Facilities" value={visibleDatacenters.length.toLocaleString() + (anyFilterActive ? ` / ${datacenters.length.toLocaleString()}` : "")} />
+          <Stat label="Total power" value={formatPower(visibleDatacenters.reduce((s, d) => s + d.powerMw, 0))} />
           {enrichedCount > 0 && (
             <div className="flex items-center gap-1.5 ml-auto">
               <span className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#FB631B] bg-[#FCDDCF] px-1.5 py-0.5 rounded-[2px]">Task API</span>
               <span className="font-mono text-[8px] text-[#858483]">{enrichedCount.toLocaleString()} enriched</span>
             </div>
           )}
+        </div>
+
+        {/* Filter bar — combinable cuts */}
+        <div className="flex items-center gap-2 px-4 py-1.5 border-b border-[#E5E5E5] bg-white shrink-0 flex-wrap">
+          <span className="font-mono uppercase text-[8px] tracking-[0.06em] text-[#A6A5A4]">Filter</span>
+          <input
+            value={filters.name}
+            onChange={(e) => setFilter("name", e.target.value)}
+            placeholder="Name / operator…"
+            className="font-mono text-[10px] text-[#181818] placeholder:text-[#B5B4B2] border border-[#E5E5E5] rounded-[3px] px-2 py-[3px] w-[150px] focus:outline-none focus:border-[#FB631B]"
+          />
+          <FilterSelect value={filters.state} onChange={(v) => setFilter("state", v)} placeholder="State" options={stateOptions.map((s) => ({ value: s, label: s }))} />
+          <FilterSelect value={filters.ai} onChange={(v) => setFilter("ai", v)} placeholder="AI class" options={[
+            ...Object.entries(AI_CLASS_LABELS).map(([value, label]) => ({ value, label })),
+            { value: "unclassified", label: "Not classified" },
+          ]} />
+          <FilterSelect value={filters.water} onChange={(v) => setFilter("water", v)} placeholder="Water" options={Object.entries(IMPACT_LABELS).map(([value, label]) => ({ value, label }))} />
+          <FilterSelect value={filters.grid} onChange={(v) => setFilter("grid", v)} placeholder="Grid" options={Object.entries(IMPACT_LABELS).map(([value, label]) => ({ value, label }))} />
+          <FilterSelect value={filters.community} onChange={(v) => setFilter("community", v)} placeholder="Community" options={Object.entries(PUSHBACK_LABELS).map(([value, label]) => ({ value, label }))} />
+          {anyFilterActive && (
+            <button
+              onClick={() => { setFilters({ name: "", state: "", ai: "", water: "", grid: "", community: "" }); setPage(0); }}
+              className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#FB631B] border border-[#F9BC9F] rounded-[3px] px-2 py-[4px] hover:bg-[#FCDDCF]/40 transition-colors"
+            >
+              Clear
+            </button>
+          )}
+          <span className="font-mono text-[9px] text-[#A6A5A4] ml-auto">{visibleDatacenters.length.toLocaleString()} match{visibleDatacenters.length !== 1 ? "es" : ""}</span>
         </div>
 
         {/* Legend bar */}
@@ -145,6 +219,10 @@ export function DatasetTable({ datacenters, monitors, snapshotUpdates = {} }: Da
                 <TH f="state" l="State" s={sortField} d={sortDir} o={handleSort} />
                 <TH f="status" l="Status" s={sortField} d={sortDir} o={handleSort} e />
                 <TH f="type" l="Type" s={sortField} d={sortDir} o={handleSort} />
+                <THE l="AI Class" />
+                <THE l="Water" />
+                <THE l="Grid" />
+                <THE l="Community" />
                 <TH f="powerMw" l="Power" s={sortField} d={sortDir} o={handleSort} a="right" e />
                 <TH f="sqft" l="Size" s={sortField} d={sortDir} o={handleSort} a="right" e />
                 <TH f="yearOnline" l="Year" s={sortField} d={sortDir} o={handleSort} a="right" e />
@@ -211,6 +289,39 @@ export function DatasetTable({ datacenters, monitors, snapshotUpdates = {} }: Da
                       <Cell dc={dc} field="verified_status" value={STATUS_LABELS[display]} onClick={openBasis} facilityIndex={originalIndex} displayValue={<StatusBadge status={display} />} />
                     </EC>
                     <td className="px-4 py-2 text-[#5C5B59] capitalize whitespace-nowrap">{dc.type}</td>
+                    <EC>
+                      {dc.aiClassification ? (
+                        <AiCell dc={dc} field="ai_class" value={AI_CLASS_LABELS[dc.aiClassification.ai_class]} note={dc.aiClassification.ai_evidence} facilityIndex={originalIndex} onClick={openAiBasis}>
+                          <span
+                            className="font-mono uppercase text-[8px] tracking-[0.05em] font-medium px-1.5 py-0.5 rounded-[2px] text-white whitespace-nowrap"
+                            style={{ backgroundColor: AI_CLASS_COLORS[dc.aiClassification.ai_class] }}
+                          >
+                            {AI_CLASS_LABELS[dc.aiClassification.ai_class]}
+                          </span>
+                        </AiCell>
+                      ) : <span className="text-[#D6D6D6]">&mdash;</span>}
+                    </EC>
+                    <EC>
+                      {dc.aiClassification ? (
+                        <AiCell dc={dc} field="water_impact" value={IMPACT_LABELS[dc.aiClassification.water_impact]} note={dc.aiClassification.water_note} facilityIndex={originalIndex} onClick={openAiBasis}>
+                          <ImpactDot color={IMPACT_COLORS[dc.aiClassification.water_impact]} label={IMPACT_LABELS[dc.aiClassification.water_impact]} />
+                        </AiCell>
+                      ) : <span className="text-[#D6D6D6]">&mdash;</span>}
+                    </EC>
+                    <EC>
+                      {dc.aiClassification ? (
+                        <AiCell dc={dc} field="grid_impact" value={IMPACT_LABELS[dc.aiClassification.grid_impact]} note={dc.aiClassification.grid_note} facilityIndex={originalIndex} onClick={openAiBasis}>
+                          <ImpactDot color={IMPACT_COLORS[dc.aiClassification.grid_impact]} label={IMPACT_LABELS[dc.aiClassification.grid_impact]} />
+                        </AiCell>
+                      ) : <span className="text-[#D6D6D6]">&mdash;</span>}
+                    </EC>
+                    <EC>
+                      {dc.aiClassification ? (
+                        <AiCell dc={dc} field="community_pushback" value={PUSHBACK_LABELS[dc.aiClassification.community_pushback]} note={dc.aiClassification.community_note} facilityIndex={originalIndex} onClick={openAiBasis}>
+                          <ImpactDot color={PUSHBACK_COLORS[dc.aiClassification.community_pushback]} label={PUSHBACK_LABELS[dc.aiClassification.community_pushback]} />
+                        </AiCell>
+                      ) : <span className="text-[#D6D6D6]">&mdash;</span>}
+                    </EC>
                     <EC className="text-right font-mono tabular-nums whitespace-nowrap" changed={changedFields.includes("power_capacity_mw")} field="power_capacity_mw" snapshot={snapshot} hoveredDiff={hoveredDiff} setHoveredDiff={setHoveredDiff} idx={originalIndex}>
                       <Cell dc={dc} field="power_capacity_mw" value={dc.powerMw > 0 ? formatPower(dc.powerMw) : ""} onClick={openBasis} facilityIndex={originalIndex} />
                     </EC>
@@ -278,7 +389,7 @@ export function DatasetTable({ datacenters, monitors, snapshotUpdates = {} }: Da
                     <span className="font-mono text-[8px] text-[#A6A5A4] ml-auto">{signalModal.snapshot.timestamp}</span>
                   </div>
                   <p className="text-[13px] text-[#858483] mb-3">
-                    Hourly snapshot detected changes in {signalModal.snapshot.changedFields.length} field{signalModal.snapshot.changedFields.length !== 1 ? "s" : ""}:
+                    Daily snapshot detected changes in {signalModal.snapshot.changedFields.length} field{signalModal.snapshot.changedFields.length !== 1 ? "s" : ""}:
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {signalModal.snapshot.changedFields.map((field) => (
@@ -337,7 +448,7 @@ function EC({ children, className, changed, field, snapshot, hoveredDiff, setHov
         <div className="absolute top-[calc(100%+3px)] left-0 z-30 w-[212px] bg-white border border-[#E5E5E5] rounded-[6px] p-[11px_12px] text-left whitespace-normal" style={{ boxShadow: "0 1px 1px rgba(0,0,0,.03), 0 2px 1px rgba(0,0,0,.02), 0 3px 1px rgba(0,0,0,.01)" }}>
           <div className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#A6A5A4] mb-[7px]">Snapshot · {field.replace(/_/g, " ")}</div>
           <div className="font-mono text-[9px] text-[#A6A5A4] leading-[14px]">
-            Re-verified {timeAgo(snapshot.timestamp)} by the hourly snapshot monitor · Task API
+            Re-verified {timeAgo(snapshot.timestamp)} by the daily snapshot monitor · Task API
           </div>
         </div>
       )}
@@ -357,6 +468,54 @@ function Cell({ dc, field, value, onClick, className, displayValue, truncate: tr
     <button onClick={(ev) => { ev.stopPropagation(); onClick(dc, field, value, facilityIndex); }} className={clsx("text-left w-full group cursor-pointer", className)}>
       <span className="flex items-center gap-1">
         <span className={isEmpty ? "text-[#D6D6D6]" : "text-[#5C5B59]"}>{isEmpty ? "\u2014" : (displayValue || shown)}</span>
+        <span className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 font-mono text-[8px] text-[#FB631B]">&middot;</span>
+      </span>
+    </button>
+  );
+}
+
+function FilterSelect({ value, onChange, placeholder, options }: {
+  value: string; onChange: (v: string) => void; placeholder: string; options: { value: string; label: string }[];
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={clsx(
+        "font-mono text-[10px] border rounded-[3px] px-1.5 py-[3px] focus:outline-none focus:border-[#FB631B] cursor-pointer max-w-[130px]",
+        value ? "border-[#F9BC9F] text-[#FB631B] bg-[#FCDDCF]/20" : "border-[#E5E5E5] text-[#5C5B59] bg-white"
+      )}
+    >
+      <option value="">{placeholder}</option>
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>{o.label}</option>
+      ))}
+    </select>
+  );
+}
+
+function ImpactDot({ color, label }: { color: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+      <span className="text-[#5C5B59]">{label}</span>
+    </span>
+  );
+}
+
+/** Clickable AI-classification cell — opens the basis panel with the model's evidence + citations. */
+function AiCell({ dc, field, value, note, facilityIndex, onClick, children }: {
+  dc: Datacenter; field: string; value: string; note: string; facilityIndex: number;
+  onClick: (dc: Datacenter, field: string, value: string, note: string, idx: number) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={(ev) => { ev.stopPropagation(); onClick(dc, field, value, note, facilityIndex); }}
+      className="text-left group cursor-pointer"
+    >
+      <span className="inline-flex items-center gap-1">
+        {children}
         <span className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 font-mono text-[8px] text-[#FB631B]">&middot;</span>
       </span>
     </button>

@@ -1,30 +1,20 @@
 "use client";
 
-import { Mail, ChevronDown } from "lucide-react";
-import { NewsletterManage } from "./NewsletterManage";
-import { useState } from "react";
+import { Mail } from "lucide-react";
 
 interface HeaderProps {
   monitorCount: number;
   detectedCount: number;
   lastChecked: string;
-  subscription: { email: string } | null;
-  onBriefClick: () => void;
-  onPreviewIssue: () => void;
-  onUnsubscribe: () => void;
+  onOpenBrief: () => void;
 }
 
 export function Header({
   monitorCount,
   detectedCount,
   lastChecked,
-  subscription,
-  onBriefClick,
-  onPreviewIssue,
-  onUnsubscribe,
+  onOpenBrief,
 }: HeaderProps) {
-  const [showManage, setShowManage] = useState(false);
-
   return (
     <header className="flex items-center justify-between px-6 py-2.5 border-b border-[#E5E5E5] bg-white shrink-0">
       <div className="flex items-center gap-3">
@@ -43,41 +33,19 @@ export function Header({
             <span>no events yet</span>
           )}
           <span>&middot;</span>
-          <span>updated {lastChecked}</span>
+          {/* Server and client clocks differ on this text node */}
+          <span suppressHydrationWarning>updated {lastChecked}</span>
         </div>
       </div>
 
       <div className="flex items-center gap-3">
-        {/* Weekly brief button */}
-        <div className="relative">
-          {subscription ? (
-            <button
-              onClick={() => setShowManage(!showManage)}
-              className="inline-flex items-center gap-[6px] border border-[#E5E5E5] rounded-[5px] px-[11px] py-[6px] cursor-pointer bg-[#FCFBFA] hover:border-[#D6D6D6] transition-colors"
-            >
-              <span className="w-[6px] h-[6px] rounded-full bg-[#1F8A5B]" />
-              <span className="font-mono text-[11px] text-[#181818]">Brief &middot; subscribed</span>
-              <ChevronDown className="w-[9px] h-[9px] text-[#A6A5A4]" />
-            </button>
-          ) : (
-            <button
-              onClick={onBriefClick}
-              className="inline-flex items-center gap-[7px] border border-[#E5E5E5] rounded-[5px] px-[11px] py-[6px] cursor-pointer hover:border-[#FB631B] hover:text-[#FB631B] transition-colors"
-            >
-              <Mail className="w-[13px] h-[13px] text-[#FB631B]" />
-              <span className="font-mono text-[11px] text-[#181818]">Weekly brief</span>
-            </button>
-          )}
-
-          {showManage && subscription && (
-            <NewsletterManage
-              email={subscription.email}
-              onPreview={() => { setShowManage(false); onPreviewIssue(); }}
-              onUnsubscribe={() => { setShowManage(false); onUnsubscribe(); }}
-              onClose={() => setShowManage(false)}
-            />
-          )}
-        </div>
+        <button
+          onClick={onOpenBrief}
+          className="inline-flex items-center gap-[7px] border border-[#E5E5E5] rounded-[5px] px-[11px] py-[6px] cursor-pointer hover:border-[#FB631B] hover:text-[#FB631B] transition-colors"
+        >
+          <Mail className="w-[13px] h-[13px] text-[#FB631B]" />
+          <span className="font-mono text-[11px] text-[#181818]">Weekly brief</span>
+        </button>
 
         <a
           href="https://parallel.ai"

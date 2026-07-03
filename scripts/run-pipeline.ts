@@ -9,7 +9,7 @@
  *   4. V2 enrichment (17 fields: owner, cooling, tier, fiber, PUE, acres, buildings, utility, tax, hazard...)
  *   5. Compact enrichment index for the app (public/data/enrichments-compact.json)
  *   6. Per-facility enrichment files in Vercel Blob (for basis panel)
- *   7. 1,939 snapshot monitors (hourly re-verification)
+ *   7. Snapshot monitors (daily re-verification, 1d)
  *
  * Usage:
  *   PARALLEL_API_KEY=xxx npx tsx scripts/run-pipeline.ts /path/to/datacenters.csv
@@ -331,7 +331,7 @@ async function step9_createSnapshots() {
     const res = await fetch(`${BASE_URL}/v1/monitors`, {
       method: "POST", headers: { "x-api-key": API_KEY!, "Content-Type": "application/json" },
       body: JSON.stringify({
-        type: "snapshot", frequency: "1h", processor: "lite",
+        type: "snapshot", frequency: "1d", processor: "base",
         settings: { task_run_id: run.runId },
         ...(WEBHOOK_URL ? { webhook: { url: WEBHOOK_URL, event_types: ["monitor.event.detected"] } } : {}),
         metadata: { facility_name: run.facilityName.slice(0, 100), facility_index: String(run.facilityIndex), type: "datacenter-snapshot" },

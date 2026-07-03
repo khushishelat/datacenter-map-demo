@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { put, list } from "@vercel/blob";
-import { Resend } from "resend";
 import monitorsData from "@/data/monitors.json";
 
 export const dynamic = "force-dynamic";
@@ -8,23 +7,10 @@ export const maxDuration = 300; // 5 min timeout for Vercel
 
 const API_KEY = process.env.PARALLEL_API_KEY || "";
 const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN || "";
-const RESEND_KEY = process.env.RESEND_API_KEY || "";
 const BASE_URL = "https://api.parallel.ai";
 
 function getIssueNumber() {
   return Math.floor((Date.now() - new Date("2024-01-01").getTime()) / (7 * 24 * 60 * 60 * 1000));
-}
-
-async function getSubscribers(): Promise<{ email: string }[]> {
-  if (!BLOB_TOKEN) return [];
-  try {
-    const { blobs } = await list({ prefix: "newsletters/", token: BLOB_TOKEN });
-    const subBlob = blobs.find((b) => b.pathname === "newsletters/subscribers.json");
-    if (!subBlob) return [];
-    const res = await fetch(subBlob.downloadUrl, { headers: { Authorization: `Bearer ${BLOB_TOKEN}` } });
-    if (res.ok) { const data = await res.json(); return data.subscribers || []; }
-  } catch {}
-  return [];
 }
 
 async function fetchMonitorEvents() {
@@ -147,7 +133,7 @@ function markdownToEmailHtml(md: string): string {
 <div style="padding:24px 30px">${html}</div>
 <div style="padding:24px 30px;background:#FCFBFA;border-top:1px solid #E5E5E5">
 <div style="font-family:'Courier New',monospace;font-weight:700;font-size:13px;color:#1D1B16;opacity:0.6;margin-bottom:8px">parallel</div>
-<div style="font-family:'Courier New',monospace;font-size:9px;color:#A6A5A4">hello@parallel.ai · Palo Alto, CA · <a href="{{UNSUBSCRIBE_URL}}" style="color:#A6A5A4">Unsubscribe</a></div>
+<div style="font-family:'Courier New',monospace;font-size:9px;color:#A6A5A4">hello@parallel.ai · Palo Alto, CA</div>
 </div></div>`;
 }
 
@@ -203,4 +189,4 @@ export async function POST() {
 }
 
 // Exported for use by the preview route
-export { markdownToEmailHtml, getIssueNumber, getSubscribers, fetchMonitorEvents, buildPrompt };
+export { markdownToEmailHtml, getIssueNumber, fetchMonitorEvents, buildPrompt };

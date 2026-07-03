@@ -5,33 +5,48 @@ import { toDisplayStatus } from "@/lib/utils";
 
 interface UseDatacentersResult {
   filtered: Datacenter[];
+  /** Lifecycle counts within the current scope (all vs AI-only). */
   counts: Record<DisplayStatus | "all", number>;
+  /** Total AI datacenters across the whole dataset (scope-independent). */
+  aiCount: number;
+  /** Total facilities across the whole dataset (scope-independent). */
+  totalCount: number;
+}
+
+export function isAiFacility(dc: Datacenter): boolean {
+  return !!dc.aiClassification && dc.aiClassification.ai_class !== "not-ai";
 }
 
 export function useDatacenters(
   activeFilter: DisplayStatus | "all",
-  searchQuery: string
+  searchQuery: string,
+  aiOnly = false
 ): UseDatacentersResult {
   return useMemo(() => {
     const counts: Record<DisplayStatus | "all", number> = {
-      all: 0,
-      operational: 0,
-      construction: 0,
-      planned: 0,
-      unknown: 0,
-      decommissioned: 0,
+      all: 0, operational: 0, construction: 0, planned: 0, unknown: 0, decommissioned: 0,
     };
+    let aiCount = 0;
+    let totalCount = 0;
 
     const query = searchQuery.toLowerCase().trim();
 
     const filtered = datacenters.filter((dc) => {
       const display = toDisplayStatus(dc.status);
+      const isAi = isAiFacility(dc);
 
-      // Count all (pre-search-filter) for status pills
+      // Scope-independent totals (drive the scope toggle)
+      totalCount++;
+      if (isAi) aiCount++;
+
+      // Scope filter: AI-only excludes non-AI entirely (from counts + results)
+      if (aiOnly && !isAi) return false;
+
+      // Lifecycle counts, computed WITHIN the current scope
       counts[display]++;
       counts.all++;
 
-      // Apply status filter
+      // Apply lifecycle status filter
       if (activeFilter !== "all" && display !== activeFilter) return false;
 
       // Apply search
@@ -43,6 +58,6 @@ export function useDatacenters(
       return true;
     });
 
-    return { filtered, counts };
-  }, [activeFilter, searchQuery]);
+    return { filtered, counts, aiCount, totalCount };
+  }, [activeFilter, searchQuery, aiOnly]);
 }

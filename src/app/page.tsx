@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import dynamic from "next/dynamic";
 import type { DisplayStatus, Monitor } from "@/lib/types";
 import { useDatacenters } from "@/hooks/useDatacenters";
@@ -9,7 +9,6 @@ import { Header } from "@/components/Header";
 import { Toolbar } from "@/components/Toolbar";
 import { MonitorPanel } from "@/components/MonitorPanel";
 import { DatasetTable } from "@/components/DatasetTable";
-import { NewsletterSubscribe } from "@/components/NewsletterSubscribe";
 import { NewsletterIssue } from "@/components/NewsletterIssue";
 
 const MapPanel = dynamic(() => import("@/components/MapPanel"), {
@@ -23,50 +22,21 @@ const MapPanel = dynamic(() => import("@/components/MapPanel"), {
 
 type Tab = "map" | "dataset";
 type FilterKey = DisplayStatus | "all";
-type BriefModal = "subscribe" | "preview" | null;
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>("map");
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
   const [selectedMonitor, setSelectedMonitor] = useState<Monitor | null>(null);
   const [focusedLocation, setFocusedLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [briefModal, setBriefModal] = useState<BriefModal>(null);
-  const [subscription, setSubscription] = useState<{ email: string } | null>(null);
+  const [showBrief, setShowBrief] = useState(false);
+  const [aiOnly, setAiOnly] = useState(false);
 
-  const { filtered, counts } = useDatacenters(activeFilter, "");
+  const { filtered, counts, aiCount, totalCount } = useDatacenters(activeFilter, "", aiOnly);
   const { monitors, totalEvents, lastChecked, snapshotUpdates } = useMonitors();
 
   const lastCheckedStr = lastChecked.toLocaleTimeString("en-US", {
     hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true,
   });
-
-  // Load subscription from localStorage on mount
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("newsletter-subscription");
-      if (saved) setSubscription(JSON.parse(saved));
-    } catch {}
-  }, []);
-
-  function handleSubscribed(email: string) {
-    const sub = { email };
-    setSubscription(sub);
-    localStorage.setItem("newsletter-subscription", JSON.stringify(sub));
-    setBriefModal(null);
-  }
-
-  function handleUnsubscribe() {
-    setSubscription(null);
-    localStorage.removeItem("newsletter-subscription");
-    // Also unsubscribe on server
-    if (subscription?.email) {
-      fetch("/api/newsletter/subscribe", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: subscription.email }),
-      }).catch(() => {});
-    }
-  }
 
   const handleMonitorSelect = useCallback(
     (monitor: Monitor | null) => {
@@ -85,10 +55,7 @@ export default function Home() {
         monitorCount={monitors.length}
         detectedCount={totalEvents}
         lastChecked={lastCheckedStr}
-        subscription={subscription}
-        onBriefClick={() => setBriefModal("subscribe")}
-        onPreviewIssue={() => setBriefModal("preview")}
-        onUnsubscribe={handleUnsubscribe}
+        onOpenBrief={() => setShowBrief(true)}
       />
       <Toolbar
         activeTab={activeTab}
@@ -97,6 +64,10 @@ export default function Home() {
         counts={counts}
         onFilterChange={(f) => { setActiveFilter(f); setSelectedMonitor(null); }}
         trackedCount={filtered.length}
+        aiCount={aiCount}
+        totalCount={totalCount}
+        aiOnly={aiOnly}
+        onAiOnlyChange={setAiOnly}
       />
 
       <div className="flex-1 flex min-h-0">
@@ -116,6 +87,7 @@ export default function Home() {
                 selectedMonitorId={selectedMonitor?.id ?? null}
                 onSelectMonitor={handleMonitorSelect}
                 onLocateEvent={handleLocateEvent}
+                onOpenBrief={() => setShowBrief(true)}
               />
             </div>
           </>
@@ -126,21 +98,8 @@ export default function Home() {
         )}
       </div>
 
-      {/* Newsletter modals */}
-      {briefModal === "subscribe" && (
-        <NewsletterSubscribe
-          onClose={() => setBriefModal(null)}
-          onSubscribed={handleSubscribed}
-          onPreview={() => setBriefModal("preview")}
-        />
-      )}
-      {briefModal === "preview" && (
-        <NewsletterIssue
-          onClose={() => setBriefModal(null)}
-          isSubscribed={!!subscription}
-          onSubscribe={() => setBriefModal("subscribe")}
-        />
-      )}
+      {/* Weekly brief modal */}
+      {showBrief && <NewsletterIssue onClose={() => setShowBrief(false)} />}
     </div>
   );
 }

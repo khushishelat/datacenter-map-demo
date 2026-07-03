@@ -18,6 +18,7 @@ interface MonitorPanelProps {
   selectedMonitorId: string | null;
   onSelectMonitor: (monitor: Monitor | null) => void;
   onLocateEvent?: (lat: number, lng: number) => void;
+  onOpenBrief?: () => void;
 }
 
 export function MonitorPanel({
@@ -25,6 +26,7 @@ export function MonitorPanel({
   selectedMonitorId,
   onSelectMonitor,
   onLocateEvent,
+  onOpenBrief,
 }: MonitorPanelProps) {
   const [breakdown, setBreakdown] = useState<BreakdownDim>("category");
   const [filterBucket, setFilterBucket] = useState<string | null>(null);
@@ -216,10 +218,14 @@ export function MonitorPanel({
                 </div>
                 <div className="text-[13px] font-medium leading-[17px] text-[#181818] mb-[4px]">{event.headline}</div>
                 {event.severity === "critical" && (
-                  <div className="flex items-center gap-[5px] mb-[4px]">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onOpenBrief?.(); }}
+                    className="flex items-center gap-[5px] mb-[4px] cursor-pointer group/brief"
+                    title="Open this week's brief"
+                  >
                     <Mail className="w-[11px] h-[11px] text-[#FB631B]" />
-                    <span className="font-mono text-[9px] text-[#FB631B]">In Monday&apos;s brief →</span>
-                  </div>
+                    <span className="font-mono text-[9px] text-[#FB631B] group-hover/brief:underline">In this week&apos;s brief →</span>
+                  </button>
                 )}
                 <p className="text-[13px] text-[#5C5B59] leading-[19px] mb-[6px]">{event.summary}</p>
                 {event.affectedEntities && (

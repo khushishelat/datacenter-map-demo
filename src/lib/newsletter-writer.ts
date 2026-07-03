@@ -24,10 +24,13 @@ STRUCTURE (follow exactly):
 4. REGIONAL ROUNDUP — one line per active region, the most important headline
 5. BY THE NUMBERS — 8-12 key data points as a clean list
 
-CITATION RULES:
-- Every factual claim with a number, date, or quote MUST have an inline <a> link
-- Use the publication name as link text, not the article title
-- If you're unsure about a fact, use the parallel_lookup tool to verify it
+CITATION RULES — THIS IS THE MOST IMPORTANT PART:
+- Cite AGGRESSIVELY. The research provides a large SOURCE POOL of real URLs — use as many DISTINCT sources as you can. A strong issue links 25-40+ distinct sources. Sparse linking is a failure.
+- EVERY factual sentence — every number, date, dollar figure, vote count, company name, quote, or claim — MUST carry an inline <a> link to a source from the pool.
+- Prefer 2-3 links per paragraph over one. When multiple sources support a point, link several ("<a>Reuters</a> and <a>the Virginia Mercury</a> both report…").
+- Use the publication/domain name as the link text, not the article title.
+- Only use URLs that appear in the SOURCE POOL or research below — never invent a URL. Match each link to the most relevant source.
+- Do NOT use numbered references like [1] or [27] — always inline hyperlinks.
 
 HTML FORMAT:
 - Use inline styles only (email-safe)
@@ -113,6 +116,7 @@ export async function writeNewsletter(opts: {
   regionSummaries: string;
   parallelApiKey: string;
   anthropicApiKey: string;
+  citationPool?: { title: string; url: string }[];
 }): Promise<string> {
   const {
     research,
@@ -124,19 +128,31 @@ export async function writeNewsletter(opts: {
     regionSummaries,
     parallelApiKey,
     anthropicApiKey,
+    citationPool = [],
   } = opts;
+
+  // Dedupe the pool by URL and cap it so the prompt stays manageable
+  const pool = Array.from(
+    new Map(citationPool.filter((c) => c.url).map((c) => [c.url, c])).values()
+  ).slice(0, 120);
+  const poolBlock = pool.length
+    ? pool.map((c, i) => `${i + 1}. ${c.title || "Source"} — ${c.url}`).join("\n")
+    : "(none supplied — pull URLs from the research text below)";
 
   const userMessage = `Write Datacenter Signal Issue ${issueNumber}.
 
 STATS: ${eventsTotal} total events, ${criticalCount} critical, ${marketsActive} markets active.
 
-DEEP RESEARCH OUTPUT (use this as your primary source — it's already fact-checked):
+SOURCE POOL — ${pool.length} real citations gathered by the Task API. Weave as many of these as possible into the prose as inline hyperlinks. Reuse the exact URLs:
+${poolBlock}
+
+DEEP RESEARCH OUTPUT (your primary narrative source — already fact-checked, contains additional inline URLs):
 ${research}
 
 ALL MONITOR EVENTS (for the regional roundup — one line per region):
 ${regionSummaries}
 
-Write the complete HTML email body now. Use the parallel_lookup tool if you need to verify any facts or fill in missing details.`;
+Write the complete HTML email body now, linking densely from the SOURCE POOL. Use the parallel_lookup tool only if you must verify a specific fact.`;
 
   const anthropic = new Anthropic({ apiKey: anthropicApiKey });
   let messages: Anthropic.MessageParam[] = [
@@ -144,10 +160,10 @@ Write the complete HTML email body now. Use the parallel_lookup tool if you need
   ];
   let finalHtml = "";
 
-  for (let turn = 0; turn < 10; turn++) {
+  for (let turn = 0; turn < 12; turn++) {
     const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 16000,
+      model: "claude-sonnet-5",
+      max_tokens: 20000,
       system: NEWSLETTER_SYSTEM,
       tools: TOOLS,
       messages,
@@ -161,9 +177,11 @@ Write the complete HTML email body now. Use the parallel_lookup tool if you need
       (b) => b.type === "tool_use",
     ) as Anthropic.ToolUseBlock[];
 
-    // Only keep the latest turn's text (earlier turns are planning/thinking)
+    // Keep the LONGEST text block seen — the finished HTML is far longer than
+    // any planning/preamble text, so this survives multi-turn tool use without
+    // being clobbered by a short "I'll verify a few facts…" preamble.
     for (const block of response.content) {
-      if (block.type === "text") {
+      if (block.type === "text" && block.text.length > finalHtml.length) {
         finalHtml = block.text;
       }
     }
@@ -198,6 +216,23 @@ Write the complete HTML email body now. Use the parallel_lookup tool if you need
     ];
   }
 
+  // Safety net: if the loop exhausted its turns on tool use before producing a
+  // full document, force one final write with no tools available.
+  if (finalHtml.replace(/```html|```/g, "").trim().length < 1500) {
+    console.log("  [writer] Output too short — forcing a final no-tools write.");
+    const forced = await anthropic.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: 20000,
+      system: NEWSLETTER_SYSTEM,
+      messages: [
+        ...messages,
+        { role: "user", content: "Write the complete HTML email body now using everything gathered above. Link densely from the SOURCE POOL. Output only the HTML." },
+      ],
+    });
+    const text = forced.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
+    if (text.length > finalHtml.length) finalHtml = text;
+  }
+
   // Extract HTML from code fences if Claude wrapped it
   const fenceMatch = finalHtml.match(/```html\s*([\s\S]*?)```/);
   if (fenceMatch) finalHtml = fenceMatch[1].trim();
@@ -219,6 +254,6 @@ export function wrapEmailTemplate(
 <div style="padding:24px 30px">${bodyHtml}</div>
 <div style="padding:24px 30px;background:#FCFBFA;border-top:1px solid #E5E5E5">
 <div style="font-family:'Courier New',monospace;font-weight:700;font-size:13px;color:#1D1B16;opacity:0.6;margin-bottom:8px">parallel</div>
-<div style="font-family:'Courier New',monospace;font-size:9px;color:#A6A5A4">hello@parallel.ai · Palo Alto, CA · <a href="{{UNSUBSCRIBE_URL}}" style="color:#A6A5A4">Unsubscribe</a></div>
+<div style="font-family:'Courier New',monospace;font-size:9px;color:#A6A5A4">hello@parallel.ai · Palo Alto, CA</div>
 </div></div>`;
 }

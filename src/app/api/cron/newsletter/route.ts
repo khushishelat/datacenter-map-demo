@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { list, put } from "@vercel/blob";
-import { Resend } from "resend";
 import { writeNewsletter, wrapEmailTemplate } from "@/lib/newsletter-writer";
 import {
   fetchMonitorEvents,
   getIssueNumber,
-  getSubscribers,
   buildPrompt,
 } from "../../newsletter/generate/route";
 
@@ -15,50 +13,14 @@ export const maxDuration = 300;
 const API_KEY = process.env.PARALLEL_API_KEY || "";
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
 const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN || "";
-const RESEND_KEY = process.env.RESEND_API_KEY || "";
 const BASE_URL = "https://api.parallel.ai";
-
-const APP_URL = process.env.VERCEL_PROJECT_PRODUCTION_URL
-  ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-  : process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : "http://localhost:3000";
-
-async function sendEmails(emailHtml: string, issueNumber: number) {
-  if (!RESEND_KEY) return 0;
-  try {
-    const subscribers = await getSubscribers();
-    if (subscribers.length === 0) return 0;
-    const resend = new Resend(RESEND_KEY);
-    let sent = 0;
-    for (const sub of subscribers) {
-      try {
-        const unsubUrl = `${APP_URL}/unsubscribe?email=${encodeURIComponent(sub.email)}`;
-        const personalizedHtml = emailHtml.replace(/\{\{UNSUBSCRIBE_URL\}\}/g, unsubUrl);
-        await resend.emails.send({
-          from: "Datacenter Signal <onboarding@resend.dev>",
-          to: sub.email,
-          subject: `Datacenter Signal — Issue ${issueNumber}`,
-          html: personalizedHtml,
-          headers: {
-            "List-Unsubscribe": `<${unsubUrl}>`,
-            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-          },
-        });
-        sent++;
-      } catch {}
-    }
-    return sent;
-  } catch {}
-  return 0;
-}
 
 /**
  * Cron-triggered newsletter pipeline. Each invocation advances the state:
  *
  *   not_found → kick off research (Task API ultra-fast)
  *   researching → check if research done
- *   research done → run Claude agent writer → save → send emails
+ *   research done → run Claude agent writer → save
  *   writing → skip (another invocation is handling it)
  *   completed → skip
  *
@@ -168,8 +130,7 @@ export async function GET(request: NextRequest) {
           access: "private", allowOverwrite: true, contentType: "application/json", token: BLOB_TOKEN,
         });
 
-        const sent = await sendEmails(emailHtml, issueNumber);
-        return NextResponse.json({ action: "completed", issueNumber, emailsSent: sent });
+        return NextResponse.json({ action: "completed", issueNumber });
       } catch (error) {
         console.error("[cron/newsletter] Writing failed:", error);
         // Reset to research phase for retry on next cron invocation

@@ -15,6 +15,39 @@ export interface Datacenter {
   status: DatacenterStatus;
   region: string;
   enrichment?: DatacenterEnrichment;
+  aiClassification?: AiClassification;
+  /** Original row index in the source dataset — the key for enrichment,
+   *  AI-classification, snapshot, and per-facility blob lookups. Survives
+   *  dedup so those references stay valid after duplicate rows are collapsed. */
+  sourceIndex?: number;
+}
+
+export type AiClass =
+  | "ai-training"
+  | "ai-inference"
+  | "ai-mixed"
+  | "cloud-hyperscale"
+  | "not-ai";
+
+export type ImpactLevel = "high" | "moderate" | "low" | "unknown";
+
+export type CommunityPushback =
+  | "active-opposition"
+  | "some-concern"
+  | "none-found";
+
+export interface AiClassification {
+  ai_class: AiClass;
+  ai_evidence: string;
+  water_impact: ImpactLevel;
+  water_note: string;
+  grid_impact: ImpactLevel;
+  grid_note: string;
+  community_pushback: CommunityPushback;
+  community_note: string;
+  citations?: { title: string; url: string }[];
+  classifiedAt?: string;
+  runId?: string;
 }
 
 export interface DatacenterEnrichment {
