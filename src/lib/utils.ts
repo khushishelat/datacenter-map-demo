@@ -22,6 +22,25 @@ export function formatSqft(sqft: number): string {
   return `${formatNumber(Math.round(sqft))} sq ft`;
 }
 
+/**
+ * Relative label for a DATE-ONLY value (e.g. a monitor event_date like
+ * "2026-07-05"). Monitor events carry no time component, so we only claim
+ * day-level precision — never fake "hours ago" from a bare date.
+ */
+export function relativeDate(dateStr: string): string {
+  const then = new Date(dateStr);
+  if (isNaN(then.getTime())) return dateStr;
+  const now = new Date();
+  const dayMs = 86_400_000;
+  const a = Date.UTC(then.getUTCFullYear(), then.getUTCMonth(), then.getUTCDate());
+  const b = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const days = Math.round((b - a) / dayMs);
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days}d ago`;
+  return `${Math.floor(days / 7)}w ago`;
+}
+
 export function timeAgo(dateStr: string): string {
   const date = new Date(dateStr);
   const now = new Date();

@@ -10,7 +10,7 @@ import {
   SEVERITY_COLORS,
   REGION_CENTROIDS,
 } from "@/lib/constants";
-import { timeAgo } from "@/lib/utils";
+import { relativeDate } from "@/lib/utils";
 
 type BreakdownDim = "time" | "category" | "severity";
 
@@ -212,7 +212,7 @@ export function MonitorPanel({
                     </span>
                     <span className="font-mono uppercase text-[9px] tracking-[0.04em] text-[#A6A5A4]">{monitor.name}</span>
                   </div>
-                  <span className="font-mono text-[9px] text-[#A6A5A4] shrink-0" title={`Detected ${event.eventDate}`}>{timeAgo(event.eventDate)}</span>
+                  <span className="font-mono text-[9px] text-[#A6A5A4] shrink-0" title={`Detected ${event.eventDate}`}>{relativeDate(event.eventDate)}</span>
                 </div>
                 <div className="text-[13px] font-medium leading-[17px] text-[#181818] mb-[4px]">{event.headline}</div>
                 {event.severity === "critical" && (

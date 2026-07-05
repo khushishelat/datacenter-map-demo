@@ -133,7 +133,7 @@ export function NewsletterIssue({ onClose }: NewsletterIssueProps) {
         <div className="flex items-center justify-between px-[18px] py-[12px] border-b border-[#E5E5E5] bg-[#FCFBFA] shrink-0">
           <div className="flex items-baseline gap-[10px]">
             <span className="font-mono font-bold text-[15px] text-[#1D1B16] tracking-[-0.01em]">parallel</span>
-            <span className="font-mono uppercase text-[10px] tracking-[0.12em] text-[#1D1B16]">Datacenter Signal</span>
+            <span className="font-mono uppercase text-[10px] tracking-[0.12em] text-[#1D1B16]">Weekly newsletter</span>
           </div>
           <div className="flex items-center gap-3">
             <span className="inline-flex items-center gap-[6px] font-mono uppercase text-[9px] tracking-[0.05em] text-[#FB631B] bg-[#FCDDCF] px-2 py-[3px] rounded-[3px]">
@@ -201,7 +201,7 @@ export function NewsletterIssue({ onClose }: NewsletterIssueProps) {
             {selectedMeta && (
               <div className="px-[22px] py-[10px] border-b border-[#E5E5E5] bg-white shrink-0 flex items-center gap-4 flex-wrap">
                 <span className="font-mono text-[9px] leading-[14px] text-[#858483]">
-                  Deep-researched and written by <span className="text-[#FB631B]">Parallel Task API</span> across 31 monitors — every claim links to a primary source.
+                  Deep-researched and written by <span className="text-[#FB631B]">Parallel Task API</span> across 31 monitors — every claim links to a source.
                 </span>
                 {selectedMeta.stats?.events != null && (
                   <span className="font-mono text-[9px] text-[#A6A5A4] ml-auto whitespace-nowrap">
