@@ -8,6 +8,11 @@ const BASE_URL = "https://api.parallel.ai";
 
 const snapshotMonitors = snapshotData as Record<string, { monitorId: string; runId: string; facilityName: string }>;
 
+export interface FieldBasis {
+  reasoning: string;
+  citations: { url: string; title: string }[];
+}
+
 export interface SnapshotUpdate {
   facilityIndex: string;
   facilityName: string;
@@ -15,6 +20,8 @@ export interface SnapshotUpdate {
   timestamp: string;
   changedFields: string[];
   changes: Record<string, { from: unknown; to: unknown }>;
+  /** Per changed field: why it changed + supporting sources (from the re-verification run). */
+  basis: Record<string, FieldBasis>;
 }
 
 // Cache results for 30s
@@ -44,7 +51,26 @@ async function fetchSnapshotEvents(monitorId: string) {
       changes[field] = { from: previousContent[field], to: changedContent[field] };
     }
 
-    return { timestamp: latest.event_date || "", changedFields, changes };
+    // The re-verification run carries its own basis (why the value changed +
+    // sources). Key it by field so the UI can explain the update, not the
+    // stale pre-update enrichment.
+    const rawBasis = (latest.changed_output?.basis || []) as {
+      field?: string;
+      reasoning?: string;
+      citations?: { url?: string; title?: string }[];
+    }[];
+    const basis: Record<string, { reasoning: string; citations: { url: string; title: string }[] }> = {};
+    for (const b of rawBasis) {
+      if (!b.field) continue;
+      basis[b.field] = {
+        reasoning: b.reasoning || "",
+        citations: (b.citations || [])
+          .filter((c) => c.url)
+          .map((c) => ({ url: c.url as string, title: c.title || "Source" })),
+      };
+    }
+
+    return { timestamp: latest.event_date || "", changedFields, changes, basis };
   } catch {
     return null;
   }
@@ -77,6 +103,7 @@ export async function GET() {
             timestamp: result.timestamp,
             changedFields: result.changedFields,
             changes: result.changes,
+            basis: result.basis,
           };
         })
       );

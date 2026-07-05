@@ -9,6 +9,8 @@ export interface SnapshotUpdate {
   timestamp: string;
   changedFields: string[];
   changes?: Record<string, { from: unknown; to: unknown }>;
+  /** Per changed field: reasoning + sources from the re-verification run. */
+  basis?: Record<string, { reasoning: string; citations: { url: string; title: string }[] }>;
 }
 
 export function useMonitors() {
@@ -47,6 +49,7 @@ export function useMonitors() {
               timestamp: u.timestamp,
               changedFields: u.changedFields,
               changes: u.changes,
+              basis: u.basis,
             };
           }
           return next;

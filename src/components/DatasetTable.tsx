@@ -86,8 +86,16 @@ export function DatasetTable({ datacenters, monitors, snapshotUpdates = {} }: Da
     const e = dc.enrichment;
     if (!e) return;
     const snap = snapshotUpdates[String(facilityIndex)];
-    const update = snap && snap.changedFields.includes(field)
-      ? { from: snap.changes?.[field]?.from, to: snap.changes?.[field]?.to, timestamp: snap.timestamp }
+    const hasUpdate = !!snap && snap.changedFields.includes(field);
+    const fieldBasis = hasUpdate ? snap!.basis?.[field] : undefined;
+    const update = hasUpdate
+      ? {
+          from: snap!.changes?.[field]?.from,
+          to: snap!.changes?.[field]?.to,
+          timestamp: snap!.timestamp,
+          reasoning: fieldBasis?.reasoning,
+          citations: fieldBasis?.citations?.map((c) => ({ field, url: c.url, title: c.title })),
+        }
       : undefined;
     setBasisData({
       field, value: value || "Not found", facilityName: dc.name, facilityIndex,

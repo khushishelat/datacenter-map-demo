@@ -20,8 +20,16 @@ export interface BasisPanelData {
   reasoning?: string;
   /** "ai" = AI classification (client-side data, skip the enrichment fetch) */
   source?: "enrichment" | "ai";
-  /** Present when a snapshot re-verification changed this field. */
-  update?: { from?: unknown; to?: unknown; timestamp?: string };
+  /** Present when a snapshot re-verification changed this field. Carries the
+   *  re-verification run's own reasoning + sources (which explain the NEW
+   *  value, unlike the stale pre-update enrichment basis). */
+  update?: {
+    from?: unknown;
+    to?: unknown;
+    timestamp?: string;
+    reasoning?: string;
+    citations?: { field: string; url: string; title: string }[];
+  };
 }
 
 interface FullBasis {
@@ -40,10 +48,11 @@ export function BasisPanel({ data, onClose }: BasisPanelProps) {
   const [loading, setLoading] = useState(false);
 
   // Fetch full basis from API when panel opens or data changes.
-  // AI classifications carry their own citations client-side — skip the
-  // enrichment-blob fetch (which has no entry for these fields).
+  // AI classifications carry their own citations client-side, and
+  // snapshot-updated fields carry the re-verification run's basis — in both
+  // cases skip the enrichment-blob fetch (which describes the OLD value).
   useEffect(() => {
-    if (!data || data.source === "ai") {
+    if (!data || data.source === "ai" || data.update) {
       setFullBasis(null);
       setLoading(false);
       return;
@@ -63,10 +72,18 @@ export function BasisPanel({ data, onClose }: BasisPanelProps) {
 
   if (!data) return null;
 
-  const reasoning = fullBasis?.reasoning || data.reasoning || "";
-  const citations = fullBasis?.citations || data.citations.filter(
-    (c) => c.field === data.field || c.field === ""
-  );
+  // For a snapshot-updated field, the current value IS update.to and the
+  // reasoning/citations come from the re-verification run — never the stale
+  // enrichment basis.
+  const displayValue =
+    data.update && data.update.to !== undefined
+      ? fmtValue(data.update.to)
+      : data.value || "—";
+  const reasoning = data.update?.reasoning || fullBasis?.reasoning || data.reasoning || "";
+  const citations =
+    data.update?.citations ||
+    fullBasis?.citations ||
+    data.citations.filter((c) => c.field === data.field || c.field === "");
   const uniqueCitations = Array.from(
     new Map(citations.map((c) => [c.url, c])).values()
   );
@@ -104,7 +121,7 @@ export function BasisPanel({ data, onClose }: BasisPanelProps) {
           )}
         </div>
         <div className="text-[13px] text-[#1D1B16] leading-[20px]">
-          {data.value || "\u2014"}
+          {displayValue}
         </div>
       </div>
 
@@ -205,7 +222,7 @@ export function BasisPanel({ data, onClose }: BasisPanelProps) {
       <div className="px-6 py-3 border-t border-[#E5E5E5] shrink-0">
         <div className="flex items-center gap-2">
           <span className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#FB631B] bg-[#FCDDCF] px-1.5 py-0.5 rounded-[2px]">
-            {data.source === "ai" ? "Classified by Task API" : "Enriched by Task API"}
+            {data.source === "ai" ? "Classified by Task API" : data.update ? "Re-verified by Task API" : "Enriched by Task API"}
           </span>
           <button
             onClick={() => setShowCode(!showCode)}
