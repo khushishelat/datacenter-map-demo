@@ -295,9 +295,9 @@ function FacilityPopup({
   }, [dc.sourceIndex]);
 
   return (
-    <div className="p-4 min-w-[260px] max-w-[320px]">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-2 mb-2">
+    <div className="flex flex-col max-h-[56vh] min-w-[260px] max-w-[300px]">
+      {/* Header — fixed above the scroll area so the close button is always reachable */}
+      <div className="flex items-start justify-between gap-2 px-4 pt-3.5 pb-2.5 shrink-0 border-b border-[#F1F0EC] bg-white rounded-t-[4px]">
         <h4 className="font-medium text-[13px] text-[#1D1B16] leading-[16px] min-w-0">
           {dc.name}
         </h4>
@@ -327,6 +327,8 @@ function FacilityPopup({
         </div>
       </div>
 
+      {/* Scrollable body — keeps a long enriched popup from overflowing the map */}
+      <div className="overflow-y-auto px-4 pt-2.5 pb-4">
       {/* Enriched description */}
       {e?.description && (
         <p className="text-[13px] text-[#5C5B59] leading-[20px] mb-2">
@@ -460,6 +462,7 @@ function FacilityPopup({
           </span>
         </div>
       )}
+      </div>
     </div>
   );
 }
