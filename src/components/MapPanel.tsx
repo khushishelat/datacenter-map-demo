@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -11,7 +11,7 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, X } from "lucide-react";
 import type { Datacenter, DisplayStatus, Monitor } from "@/lib/types";
 import {
   STATUS_COLORS,
@@ -232,7 +232,7 @@ export default function MapPanel({
                   <div className="text-[#858483]">{dc.operator} &middot; {dc.city}, {dc.state}</div>
                 </div>
               </Tooltip>
-              <Popup>
+              <Popup closeButton={false} minWidth={260} maxWidth={320}>
                 <FacilityPopup dc={dc} display={display} />
               </Popup>
             </CircleMarker>
@@ -268,35 +268,63 @@ function FacilityPopup({
   dc: Datacenter;
   display: DisplayStatus;
 }) {
+  const map = useMap();
   const e = dc.enrichment;
-  const uniqueCitations = e?.citations
-    ? Array.from(
-        new Map(e.citations.map((c) => [c.url, c])).values()
-      ).slice(0, 4)
-    : [];
+
+  // Citations are stripped from the static bundle and loaded on demand.
+  // This component only mounts when the popup actually opens (react-leaflet
+  // portals children lazily), so the fetch fires once per open.
+  const [citations, setCitations] = useState<{ url: string; title: string }[]>([]);
+  const [loadingCites, setLoadingCites] = useState(false);
+
+  useEffect(() => {
+    if (dc.sourceIndex == null) return;
+    let cancelled = false;
+    setLoadingCites(true);
+    fetch(`/api/basis?facility=${dc.sourceIndex}`)
+      .then((r) => r.json())
+      .then((d: { citations?: { url: string; title: string }[] }) => {
+        if (cancelled) return;
+        const list = (d.citations || []).filter((c) => c.url?.startsWith("http"));
+        const unique = Array.from(new Map(list.map((c) => [c.url, c])).values());
+        setCitations(unique.slice(0, 6));
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoadingCites(false); });
+    return () => { cancelled = true; };
+  }, [dc.sourceIndex]);
 
   return (
     <div className="p-4 min-w-[260px] max-w-[320px]">
       {/* Header */}
       <div className="flex items-start justify-between gap-2 mb-2">
-        <h4 className="font-medium text-[13px] text-[#1D1B16] leading-[16px]">
+        <h4 className="font-medium text-[13px] text-[#1D1B16] leading-[16px] min-w-0">
           {dc.name}
         </h4>
-        <span
-          className="shrink-0 font-mono uppercase text-[8px] tracking-[0.05em] font-medium px-1.5 py-0.5 rounded-[2px]"
-          style={{
-            backgroundColor:
-              display === "operational" || display === "construction"
-                ? "#FCDDCF"
-                : "#F6F6F6",
-            color:
-              display === "operational" || display === "construction"
-                ? "#FB631B"
-                : "#858483",
-          }}
-        >
-          {STATUS_LABELS[display]}
-        </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span
+            className="font-mono uppercase text-[8px] tracking-[0.05em] font-medium px-1.5 py-0.5 rounded-[2px]"
+            style={{
+              backgroundColor:
+                display === "operational" || display === "construction"
+                  ? "#FCDDCF"
+                  : "#F6F6F6",
+              color:
+                display === "operational" || display === "construction"
+                  ? "#FB631B"
+                  : "#858483",
+            }}
+          >
+            {STATUS_LABELS[display]}
+          </span>
+          <button
+            onClick={() => map.closePopup()}
+            aria-label="Close"
+            className="text-[#ADADAC] hover:text-[#1D1B16] transition-colors -mr-1 -mt-0.5 p-0.5"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* Enriched description */}
@@ -397,21 +425,28 @@ function FacilityPopup({
         </div>
       )}
 
-      {/* Citations */}
-      {uniqueCitations.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1">
-          {uniqueCitations.map((c, i) => (
-            <a
-              key={i}
-              href={c.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-0.5 font-mono text-[8px] uppercase tracking-[0.02em] text-[#858483] border border-[#E5E5E5] rounded-[2px] px-1.5 py-0.5 hover:border-[#FB631B] hover:text-[#FB631B] transition-colors"
-            >
-              {c.title.length > 30 ? c.title.slice(0, 30) + "..." : c.title}
-              <ExternalLink className="w-2 h-2" />
-            </a>
-          ))}
+      {/* Citations (loaded on demand from Task API basis) */}
+      {(loadingCites || citations.length > 0) && (
+        <div className="mt-2 pt-2 border-t border-[#E5E5E5]">
+          <div className="font-mono uppercase text-[8px] tracking-[0.05em] text-[#ADADAC] mb-1.5">
+            {loadingCites && citations.length === 0
+              ? "Loading sources…"
+              : `Sources (${citations.length})`}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {citations.map((c, i) => (
+              <a
+                key={i}
+                href={c.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-0.5 font-mono text-[8px] uppercase tracking-[0.02em] text-[#858483] border border-[#E5E5E5] rounded-[2px] px-1.5 py-0.5 hover:border-[#FB631B] hover:text-[#FB631B] transition-colors"
+              >
+                {c.title.length > 30 ? c.title.slice(0, 30) + "..." : c.title}
+                <ExternalLink className="w-2 h-2" />
+              </a>
+            ))}
+          </div>
         </div>
       )}
 

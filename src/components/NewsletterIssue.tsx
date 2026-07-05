@@ -212,7 +212,7 @@ export function NewsletterIssue({ onClose }: NewsletterIssueProps) {
             )}
 
             {/* Body */}
-            <div className="flex-1 overflow-y-auto bg-[#F2EFEA]">
+            <div className="flex-1 overflow-y-auto bg-white">
               {status === "loading" && (
                 <div className="flex items-center justify-center py-24">
                   <Loader2 className="w-4 h-4 text-[#FB631B] animate-spin" />
@@ -249,7 +249,7 @@ export function NewsletterIssue({ onClose }: NewsletterIssueProps) {
               )}
 
               {status === "ready" && content && (
-                <div className="newsletter-body" dangerouslySetInnerHTML={{ __html: content }} />
+                <div className="newsletter-body px-[22px] py-[18px] max-w-[720px]" dangerouslySetInnerHTML={{ __html: content }} />
               )}
             </div>
 
