@@ -41,9 +41,20 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Large data files (regenerated via scripts)
+# Large data files / run manifests (regenerated via scripts)
 public/data/enrichments.json
 src/data/backfill-results.json
 src/data/enrichment-runs.json
 src/data/enrichment-v2-runs.json
+src/data/ai-classification-runs.json
 .env*.local
+
+# Editor / OS
+*.code-workspace
+
+# Generated pipeline artifacts
+scripts/*.html
+scripts/newsletter-*.md
+scripts/newsletter-meta.json
+datacenters.json
+datacenters.runs.jsonl
