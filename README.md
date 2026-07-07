@@ -2,7 +2,7 @@
 
 A live map of U.S. datacenter infrastructure, built end-to-end on [Parallel](https://parallel.ai)'s **Task API** and **Monitor API**. Every facility on the map was *discovered*, *enriched*, and *classified* by Parallel — and 31 monitors watch the web for new developments, with each claim traceable to its sources.
 
-**Live demo:** https://datacenter-map-demo.vercel.app
+**Live demo:** https://datacenter-demo.app
 
 Everything here — the facility list, the 25 fields per facility, the AI-impact classifications, the weekly brief — is generated data. Nothing is hand-curated. This README documents exactly how it was produced so you can reproduce or extend it.
 
